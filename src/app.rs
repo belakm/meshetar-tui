@@ -2,66 +2,71 @@ use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
   action::Action,
-  components::{home::Home, fps::FpsCounter, Component},
+  components::Component,
   config::Config,
   mode::Mode,
-  tui,
+  screens::{home::Home, Screen},
+  tui::{self, Tui},
 };
 
 pub struct App {
   pub config: Config,
   pub tick_rate: f64,
   pub frame_rate: f64,
-  pub components: Vec<Box<dyn Component>>,
+  pub screen: Box<dyn Component>,
   pub should_quit: bool,
   pub should_suspend: bool,
   pub mode: Mode,
-  pub last_tick_key_events: Vec<KeyEvent>,
+  action_tx: UnboundedSender<Action>,
+  action_rx: UnboundedReceiver<Action>,
+  tui: Tui,
 }
 
 impl App {
   pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
-    let home = Home::new();
-    let fps = FpsCounter::default();
     let config = Config::new()?;
     let mode = Mode::Home;
+    let home = Home::default();
+    let (action_tx, action_rx) = mpsc::unbounded_channel();
+    let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
+
     Ok(Self {
       tick_rate,
       frame_rate,
-      components: vec![Box::new(home), Box::new(fps)],
+      screen: Box::new(home),
       should_quit: false,
       should_suspend: false,
       config,
       mode,
-      last_tick_key_events: Vec::new(),
+      action_tx,
+      action_rx,
+      tui,
     })
   }
 
+  pub fn mount_screen(&mut self, screen: Screen) -> Result<()> {
+    let mut component: Box<dyn Component> = match screen {
+      Screen::HOME => Box::new(Home::default()),
+      // Screen::RUNS => None,
+      // Screen::MODELS => None,
+      // Screen::REPORT => None,
+    };
+    component.register_action_handler(self.action_tx.clone())?;
+    component.register_config_handler(self.config.clone())?;
+    component.init(self.tui.size()?)?;
+    self.screen = component;
+    Ok(())
+  }
+
   pub async fn run(&mut self) -> Result<()> {
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-
-    let mut tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
-    // tui.mouse(true);
-    tui.enter()?;
-
-    for component in self.components.iter_mut() {
-      component.register_action_handler(action_tx.clone())?;
-    }
-
-    for component in self.components.iter_mut() {
-      component.register_config_handler(self.config.clone())?;
-    }
-
-    for component in self.components.iter_mut() {
-      component.init(tui.size()?)?;
-    }
-
+    self.tui.enter()?;
+    let action_tx = self.action_tx.clone();
     loop {
-      if let Some(e) = tui.next().await {
+      if let Some(e) = self.tui.next().await {
         match e {
           tui::Event::Quit => action_tx.send(Action::Quit)?,
           tui::Event::Tick => action_tx.send(Action::Tick)?,
@@ -72,80 +77,58 @@ impl App {
               if let Some(action) = keymap.get(&vec![key]) {
                 log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
-              } else {
-                // If the key was not handled as a single key action,
-                // then consider it for multi-key combinations.
-                self.last_tick_key_events.push(key);
-
-                // Check for multi-key combinations
-                if let Some(action) = keymap.get(&self.last_tick_key_events) {
-                  log::info!("Got action: {action:?}");
-                  action_tx.send(action.clone())?;
-                }
               }
             };
           },
           _ => {},
         }
-        for component in self.components.iter_mut() {
-          if let Some(action) = component.handle_events(Some(e.clone()))? {
-            action_tx.send(action)?;
-          }
+        if let Some(action) = self.screen.handle_events(Some(e.clone()))? {
+          action_tx.send(action)?;
         }
       }
 
-      while let Ok(action) = action_rx.try_recv() {
-        if action != Action::Tick && action != Action::Render {
-          log::debug!("{action:?}");
-        }
+      while let Ok(action) = self.action_rx.try_recv() {
+        log::debug!("{action:?}");
         match action {
-          Action::Tick => {
-            self.last_tick_key_events.drain(..);
-          },
+          Action::Tick => {},
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
           Action::Resize(w, h) => {
-            tui.resize(Rect::new(0, 0, w, h))?;
-            tui.draw(|f| {
-              for component in self.components.iter_mut() {
-                let r = component.draw(f, f.size());
-                if let Err(e) = r {
-                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
-                }
+            self.tui.resize(Rect::new(0, 0, w, h))?;
+            self.tui.draw(|f| {
+              let r = self.screen.draw(f, f.size());
+              if let Err(e) = r {
+                action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
               }
             })?;
           },
           Action::Render => {
-            tui.draw(|f| {
-              for component in self.components.iter_mut() {
-                let r = component.draw(f, f.size());
-                if let Err(e) = r {
-                  action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
-                }
+            self.tui.draw(|f| {
+              let r = self.screen.draw(f, f.size());
+              if let Err(e) = r {
+                action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
               }
             })?;
           },
           _ => {},
         }
-        for component in self.components.iter_mut() {
-          if let Some(action) = component.update(action.clone())? {
-            action_tx.send(action)?
-          };
-        }
+        if let Some(action) = self.screen.update(action.clone())? {
+          action_tx.send(action)?
+        };
       }
       if self.should_suspend {
-        tui.suspend()?;
+        self.tui.suspend()?;
         action_tx.send(Action::Resume)?;
-        tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
+        self.tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
         // tui.mouse(true);
-        tui.enter()?;
+        self.tui.enter()?;
       } else if self.should_quit {
-        tui.stop()?;
+        self.tui.stop()?;
         break;
       }
     }
-    tui.exit()?;
+    self.tui.exit()?;
     Ok(())
   }
 }

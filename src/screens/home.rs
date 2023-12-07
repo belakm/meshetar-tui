@@ -1,16 +1,15 @@
 use std::{collections::HashMap, time::Duration};
 
+use crate::{
+  action::Action,
+  components::{style::stylized_block, Component},
+  config::{Config, KeyBindings},
+};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
-
-use super::{Component, Frame};
-use crate::{
-  action::Action,
-  config::{Config, KeyBindings},
-};
 
 #[derive(Default)]
 pub struct Home {
@@ -37,16 +36,16 @@ impl Component for Home {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {
-      },
+      Action::Tick => {},
       _ => {},
     }
     Ok(None)
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(Paragraph::new("hello world"), area);
+    let container = stylized_block(false);
+    f.render_widget(container, area);
+    f.render_widget(Paragraph::new("hello world"), area.inner(&Margin { horizontal: 2, vertical: 2 }));
     Ok(())
   }
 }
-
