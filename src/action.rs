@@ -1,9 +1,12 @@
 use std::fmt;
 
+use crossterm::event::KeyCode;
 use serde::{
   de::{self, Deserializer, Visitor},
   Deserialize, Serialize,
 };
+
+use crate::screens::Screen;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Action {
@@ -16,6 +19,8 @@ pub enum Action {
   Refresh,
   Error(String),
   Help,
+  Navigate(Screen),
+  Key(KeyCode),
 }
 
 impl<'de> Deserialize<'de> for Action {

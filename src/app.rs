@@ -9,7 +9,7 @@ use crate::{
   components::Component,
   config::Config,
   mode::Mode,
-  screens::{home::Home, Screen},
+  screens::{home::Home, models::Models, report::Report, sessions::Sessions, Screen},
   tui::{self, Tui},
 };
 
@@ -48,12 +48,13 @@ impl App {
     })
   }
 
-  pub fn mount_screen(&mut self, screen: Screen) -> Result<()> {
+  pub fn navigate(&mut self, screen: Screen) -> Result<()> {
     let mut component: Box<dyn Component> = match screen {
       Screen::HOME => Box::new(Home::default()),
-      // Screen::RUNS => None,
-      // Screen::MODELS => None,
-      // Screen::REPORT => None,
+      Screen::SESSIONS => Box::new(Sessions::default()),
+      Screen::MODELS => Box::new(Models::default()),
+      Screen::REPORT => Box::new(Report::default()),
+      Screen::RUNNING => Box::new(Report::default()),
     };
     component.register_action_handler(self.action_tx.clone())?;
     component.register_config_handler(self.config.clone())?;
@@ -110,6 +111,9 @@ impl App {
                 action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
               }
             })?;
+          },
+          Action::Navigate(screen) => {
+            self.navigate(screen)?;
           },
           _ => {},
         }

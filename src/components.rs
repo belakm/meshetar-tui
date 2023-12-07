@@ -12,7 +12,6 @@ use crate::{
 pub mod form;
 pub mod list;
 pub mod report;
-pub mod run;
 pub mod style;
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

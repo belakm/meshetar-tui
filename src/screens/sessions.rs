@@ -12,18 +12,18 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Default)]
-pub struct Models {
+pub struct Sessions {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
 }
 
-impl Models {
+impl Sessions {
   pub fn new() -> Self {
     Self::default()
   }
 }
 
-impl Component for Models {
+impl Component for Sessions {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
