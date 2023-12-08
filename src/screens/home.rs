@@ -1,7 +1,7 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::{Action, MoveDirection},
-  components::style::{header_style, stylized_block, stylized_button},
+  components::style::{default_layout, header_style, logo, outer_container_block, stylized_block, stylized_button},
   config::{Config, KeyBindings},
 };
 use color_eyre::eyre::Result;
@@ -73,28 +73,23 @@ impl Screen for Home {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let container = stylized_block(false);
-    f.render_widget(container, area);
+    f.render_widget(outer_container_block(), area);
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
+    let (header_area, content_area) = default_layout(inner_area);
+    f.render_widget(logo(), header_area);
     let layout = Layout::default()
       .constraints(vec![
-        Constraint::Length(3),
         Constraint::Percentage(10),
         Constraint::Length(4),
         Constraint::Length(4),
         Constraint::Length(4),
         Constraint::Percentage(10),
       ])
-      .split(inner_area);
-
-    let title = r#"╔╦╗╔═╗╔═╗╦ ╦╔═╗╔╦╗╔═╗╦═╗
-║║║║╣ ╚═╗╠═╣║╣  ║ ╠═╣╠╦╝
-╩ ╩╚═╝╚═╝╩ ╩╚═╝ ╩ ╩ ╩╩╚═"#;
-    f.render_widget(Paragraph::new(title).alignment(Alignment::Center).style(header_style()), layout[0]);
+      .split(content_area);
 
     for (index, action) in HomeAction::iter().enumerate() {
       let inner_area =
-        Layout::default().constraints(vec![Constraint::Min(0), Constraint::Length(1)]).split(layout[index + 2]);
+        Layout::default().constraints(vec![Constraint::Min(0), Constraint::Length(1)]).split(layout[index + 1]);
       let inner_area = inner_area[0];
       let button_width = 20;
       let padding = (inner_area.width - button_width) / 2;

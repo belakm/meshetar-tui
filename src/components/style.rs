@@ -1,7 +1,7 @@
 use ratatui::{
-  prelude::{Constraint, Direction, Layout, Rect},
+  prelude::{Alignment, Constraint, Direction, Layout, Rect},
   style::{Color, Modifier, Style},
-  widgets::{Block, BorderType, Borders},
+  widgets::{Block, BorderType, Borders, Padding, Paragraph},
 };
 
 pub struct Theme {
@@ -85,6 +85,43 @@ pub fn button_border_style(selected: bool) -> Style {
   } else {
     Style::default().bg(DEFAULT_THEME.bg_button).fg(DEFAULT_THEME.bg_button)
   }
+}
+
+pub fn outer_container_block<'a>() -> Block<'a> {
+  let border_style = default_border_style(true);
+  let content_style = default_style(true);
+  Block::default()
+    .borders(Borders::ALL)
+    .style(content_style)
+    .border_style(border_style)
+    .border_type(BorderType::Rounded)
+}
+
+pub fn default_layout(area: Rect) -> (Rect, Rect) {
+  let layout =
+    Layout::default().constraints(vec![Constraint::Length(4), Constraint::Max(2), Constraint::Min(0)]).split(area);
+  (layout[0], layout[2])
+}
+
+pub fn logo<'a>() -> Paragraph<'a> {
+  let title = r#"╔╦╗╔═╗╔═╗╦ ╦╔═╗╔╦╗╔═╗╦═╗
+║║║║╣ ╚═╗╠═╣║╣  ║ ╠═╣╠╦╝
+╩ ╩╚═╝╚═╝╩ ╩╚═╝ ╩ ╩ ╩╩╚═"#;
+  Paragraph::new(title).alignment(Alignment::Center).style(header_style())
+}
+
+pub fn default_header<'a>(text: &'a str) -> Paragraph<'a> {
+  Paragraph::new(text).alignment(Alignment::Center).block(stylized_block(false).borders(Borders::BOTTOM))
+}
+
+pub fn centered_text<'a>(text: &'a str) -> Paragraph<'a> {
+  Paragraph::new(text).alignment(Alignment::Center).block(stylized_block(false))
+}
+
+pub fn button<'a>(text: &'a str, is_selected: bool) -> Paragraph<'a> {
+  Paragraph::new(text)
+    .alignment(Alignment::Center)
+    .block(Block::new().padding(Padding::vertical(1)).style(button_style(is_selected)))
 }
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`

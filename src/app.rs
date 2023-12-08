@@ -6,9 +6,18 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
   action::{Action, MoveDirection},
+  components::style::stylized_block,
   config::Config,
   mode::Mode,
-  screens::{home::Home, models::Models, report::Report, run_config::RunConfig, sessions::Sessions, Screen, ScreenId},
+  screens::{
+    home::Home,
+    models::Models,
+    report::Report,
+    run_config::RunConfig,
+    running::{Running, RunningMode},
+    sessions::Sessions,
+    Screen, ScreenId,
+  },
   tui::{self, Tui},
 };
 
@@ -55,7 +64,12 @@ impl App {
       ScreenId::SESSIONS => Box::new(Sessions::default()),
       ScreenId::MODELS => Box::new(Models::default()),
       ScreenId::REPORT => Box::new(Report::default()),
-      ScreenId::RUNNING => Box::new(Report::default()),
+      ScreenId::RUNNING => {
+        let mut running = Running::default();
+        running.set_mode(RunningMode::RUNNING);
+        Box::new(running)
+      },
+      ScreenId::BACKTEST => Box::new(Running::default()),
       ScreenId::RUNCONFIG => Box::new(RunConfig::default()),
     };
     screen.register_action_handler(self.action_tx.clone())?;

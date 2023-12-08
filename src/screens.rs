@@ -24,6 +24,7 @@ pub enum ScreenId {
   SESSIONS,
   RUNCONFIG,
   RUNNING,
+  BACKTEST,
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
