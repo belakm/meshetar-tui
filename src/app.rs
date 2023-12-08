@@ -1,14 +1,14 @@
 use color_eyre::eyre::Result;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::Rect;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
-  action::Action,
+  action::{Action, MoveDirection},
   config::Config,
   mode::Mode,
-  screens::{home::Home, models::Models, report::Report, sessions::Sessions, Screen, ScreenId},
+  screens::{home::Home, models::Models, report::Report, run_config::RunConfig, sessions::Sessions, Screen, ScreenId},
   tui::{self, Tui},
 };
 
@@ -29,14 +29,16 @@ impl App {
   pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
     let config = Config::new()?;
     let mode = Mode::Home;
-    let home = Home::default();
+    let mut screen = Home::default();
     let (action_tx, action_rx) = mpsc::unbounded_channel();
     let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
-
+    screen.register_action_handler(action_tx.clone())?;
+    screen.register_config_handler(config.clone())?;
+    screen.init(tui.size()?)?;
     Ok(Self {
       tick_rate,
       frame_rate,
-      screen: Box::new(home),
+      screen: Box::new(screen),
       should_quit: false,
       should_suspend: false,
       config,
@@ -48,17 +50,18 @@ impl App {
   }
 
   pub fn navigate(&mut self, screen: ScreenId) -> Result<()> {
-    let mut component: Box<dyn Screen> = match screen {
+    let mut screen: Box<dyn Screen> = match screen {
       ScreenId::HOME => Box::new(Home::default()),
       ScreenId::SESSIONS => Box::new(Sessions::default()),
       ScreenId::MODELS => Box::new(Models::default()),
       ScreenId::REPORT => Box::new(Report::default()),
       ScreenId::RUNNING => Box::new(Report::default()),
+      ScreenId::RUNCONFIG => Box::new(RunConfig::default()),
     };
-    component.register_action_handler(self.action_tx.clone())?;
-    component.register_config_handler(self.config.clone())?;
-    component.init(self.tui.size()?)?;
-    self.screen = component;
+    screen.register_action_handler(self.action_tx.clone())?;
+    screen.register_config_handler(self.config.clone())?;
+    screen.init(self.tui.size()?)?;
+    self.screen = screen;
     Ok(())
   }
 
@@ -79,6 +82,30 @@ impl App {
                 action_tx.send(action.clone())?;
               }
             };
+            match key.code {
+              KeyCode::Up => {
+                let _ = action_tx.send(Action::Move(MoveDirection::Up));
+              },
+              KeyCode::Down => {
+                let _ = action_tx.send(Action::Move(MoveDirection::Down));
+              },
+              KeyCode::Left => {
+                let _ = action_tx.send(Action::Move(MoveDirection::Left));
+              },
+              KeyCode::Right => {
+                let _ = action_tx.send(Action::Move(MoveDirection::Right));
+              },
+              KeyCode::Enter => {
+                let _ = action_tx.send(Action::Accept);
+              },
+              KeyCode::Esc => {
+                let _ = action_tx.send(Action::Navigate(ScreenId::HOME));
+              },
+              KeyCode::Char('q') => {
+                let _ = action_tx.send(Action::Quit);
+              },
+              _ => {},
+            }
           },
           _ => {},
         }

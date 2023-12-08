@@ -1,23 +1,31 @@
 use ratatui::{
   prelude::{Constraint, Direction, Layout, Rect},
-  style::{Color, Style},
+  style::{Color, Modifier, Style},
   widgets::{Block, BorderType, Borders},
 };
 
 pub struct Theme {
   bg: Color,
+  bg_button: Color,
+  bg_button_selected: Color,
   border: Color,
   border_selected: Color,
   text: Color,
   text_selected: Color,
+  text_button: Color,
+  text_button_selected: Color,
 }
 
 static DEFAULT_THEME: Theme = Theme {
-  bg: Color::Indexed(234), // dark-grey
+  bg: Color::Indexed(234),
+  bg_button: Color::Indexed(236),
+  bg_button_selected: Color::Indexed(178),
   border: Color::Indexed(250),
   text: Color::Indexed(252),
   border_selected: Color::Green,
   text_selected: Color::White,
+  text_button: Color::Indexed(252),
+  text_button_selected: Color::Black,
 };
 
 pub fn stylized_block<'a>(selected: bool) -> Block<'a> {
@@ -43,6 +51,39 @@ pub fn default_border_style(selected: bool) -> Style {
     Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.border_selected)
   } else {
     Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.border)
+  }
+}
+
+pub fn header_style() -> Style {
+  Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.bg_button_selected)
+}
+
+pub fn stylized_button<'a>(selected: bool) -> Block<'a> {
+  let border_style = button_border_style(selected);
+  let content_style = button_style(selected);
+  Block::default()
+    .borders(Borders::ALL)
+    .style(content_style)
+    .border_style(border_style)
+    .border_type(BorderType::Rounded)
+}
+
+pub fn button_style(selected: bool) -> Style {
+  if selected {
+    Style::default()
+      .bg(DEFAULT_THEME.bg_button_selected)
+      .fg(DEFAULT_THEME.text_button_selected)
+      .add_modifier(Modifier::BOLD)
+  } else {
+    Style::default().bg(DEFAULT_THEME.bg_button).fg(DEFAULT_THEME.text_button).add_modifier(Modifier::BOLD)
+  }
+}
+
+pub fn button_border_style(selected: bool) -> Style {
+  if selected {
+    Style::default().bg(DEFAULT_THEME.bg_button_selected).fg(DEFAULT_THEME.bg_button_selected)
+  } else {
+    Style::default().bg(DEFAULT_THEME.bg_button).fg(DEFAULT_THEME.bg_button)
   }
 }
 

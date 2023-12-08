@@ -1,3 +1,4 @@
+use super::style::{centered_rect, stylized_block};
 use color_eyre::eyre::Result;
 use ratatui::{
   prelude::{Alignment, Constraint, Layout, Margin, Rect},
@@ -7,8 +8,6 @@ use ratatui::{
 };
 use std::fmt::Display;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
-
-use super::style::{centered_rect, stylized_block};
 
 pub struct Select<T> {
   items: Vec<T>,

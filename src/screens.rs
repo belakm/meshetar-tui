@@ -12,6 +12,7 @@ use tokio::sync::mpsc::UnboundedSender;
 pub mod home;
 pub mod models;
 pub mod report;
+pub mod run_config;
 pub mod running;
 pub mod sessions;
 
@@ -21,6 +22,7 @@ pub enum ScreenId {
   MODELS,
   REPORT,
   SESSIONS,
+  RUNCONFIG,
   RUNNING,
 }
 

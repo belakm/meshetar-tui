@@ -21,6 +21,8 @@ pub enum Action {
   Help,
   Navigate(ScreenId),
   Key(KeyCode),
+  Move(MoveDirection),
+  Accept,
 }
 
 impl<'de> Deserialize<'de> for Action {
@@ -70,4 +72,12 @@ impl<'de> Deserialize<'de> for Action {
 
     deserializer.deserialize_str(ActionVisitor)
   }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum MoveDirection {
+  Up,
+  Down,
+  Left,
+  Right,
 }
