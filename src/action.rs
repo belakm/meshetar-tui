@@ -6,7 +6,7 @@ use serde::{
   Deserialize, Serialize,
 };
 
-use crate::screens::Screen;
+use crate::screens::ScreenId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Action {
@@ -19,7 +19,7 @@ pub enum Action {
   Refresh,
   Error(String),
   Help,
-  Navigate(Screen),
+  Navigate(ScreenId),
   Key(KeyCode),
 }
 

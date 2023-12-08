@@ -756,6 +756,7 @@ dependencies = [
  "serde_json",
  "signal-hook",
  "strip-ansi-escapes",
+ "strum",
  "tokio",
  "tokio-util",
  "tracing",

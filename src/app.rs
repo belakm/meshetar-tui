@@ -6,10 +6,9 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::{
   action::Action,
-  components::Component,
   config::Config,
   mode::Mode,
-  screens::{home::Home, models::Models, report::Report, sessions::Sessions, Screen},
+  screens::{home::Home, models::Models, report::Report, sessions::Sessions, Screen, ScreenId},
   tui::{self, Tui},
 };
 
@@ -17,7 +16,7 @@ pub struct App {
   pub config: Config,
   pub tick_rate: f64,
   pub frame_rate: f64,
-  pub screen: Box<dyn Component>,
+  pub screen: Box<dyn Screen>,
   pub should_quit: bool,
   pub should_suspend: bool,
   pub mode: Mode,
@@ -48,13 +47,13 @@ impl App {
     })
   }
 
-  pub fn navigate(&mut self, screen: Screen) -> Result<()> {
-    let mut component: Box<dyn Component> = match screen {
-      Screen::HOME => Box::new(Home::default()),
-      Screen::SESSIONS => Box::new(Sessions::default()),
-      Screen::MODELS => Box::new(Models::default()),
-      Screen::REPORT => Box::new(Report::default()),
-      Screen::RUNNING => Box::new(Report::default()),
+  pub fn navigate(&mut self, screen: ScreenId) -> Result<()> {
+    let mut component: Box<dyn Screen> = match screen {
+      ScreenId::HOME => Box::new(Home::default()),
+      ScreenId::SESSIONS => Box::new(Sessions::default()),
+      ScreenId::MODELS => Box::new(Models::default()),
+      ScreenId::REPORT => Box::new(Report::default()),
+      ScreenId::RUNNING => Box::new(Report::default()),
     };
     component.register_action_handler(self.action_tx.clone())?;
     component.register_config_handler(self.config.clone())?;
