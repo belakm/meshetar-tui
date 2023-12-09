@@ -1,7 +1,7 @@
-use super::Screen;
+use super::{Screen, ScreenId};
 use crate::{
   action::Action,
-  components::style::stylized_block,
+  components::style::{button, default_layout, logo, outer_container_block, stylized_block},
   config::{Config, KeyBindings},
 };
 use color_eyre::eyre::Result;
@@ -37,15 +37,29 @@ impl Screen for Report {
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
       Action::Tick => {},
+      Action::Accept => {
+        if let Some(command_tx) = &self.command_tx {
+          command_tx.send(Action::Navigate(ScreenId::SESSIONS))?;
+        }
+      },
       _ => {},
     }
     Ok(None)
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let container = stylized_block(false);
-    f.render_widget(container, area);
-    f.render_widget(Paragraph::new("hello world"), area.inner(&Margin { horizontal: 2, vertical: 2 }));
+    f.render_widget(outer_container_block(), area);
+    let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
+    let (header_area, content_area) = default_layout(inner_area);
+    f.render_widget(logo(), header_area);
+    let content_layout =
+      Layout::default().constraints(vec![Constraint::Min(0), Constraint::Length(3)]).split(content_area);
+    let button_layout = Layout::default()
+      .direction(Direction::Horizontal)
+      .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(30), Constraint::Percentage(40)])
+      .split(content_layout[1]);
+
+    f.render_widget(button("Back", true), button_layout[1]);
     Ok(())
   }
 }
