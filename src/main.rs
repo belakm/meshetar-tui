@@ -10,6 +10,7 @@ pub mod components;
 pub mod config;
 pub mod core;
 pub mod database;
+pub mod events;
 pub mod mode;
 pub mod portfolio;
 pub mod screens;
@@ -32,7 +33,7 @@ async fn tokio_main() -> Result<()> {
   initialize_logging()?;
   initialize_panic_handler()?;
   let args = Cli::parse();
-  let mut app = App::new(args.tick_rate, args.frame_rate)?;
+  let mut app = App::new(args.tick_rate, args.frame_rate).await?;
   app.run().await?;
   Ok(())
 }

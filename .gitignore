@@ -1,2 +1,10 @@
 /target
 .data/*.log
+.config/env.toml
+/static
+database.sqlite
+database.sqlite-journal
+summary.html
+/models/neural_net_model/*
+/models/neural_net_model
+/models/cutoffs.pickle

@@ -1,4 +1,4 @@
-max_width = 120
+max_width = 90
 use_small_heuristics = "Max"
 empty_item_single_line = false
 force_multiline_blocks = true
