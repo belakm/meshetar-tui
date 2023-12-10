@@ -4,11 +4,18 @@
 
 pub mod action;
 pub mod app;
+pub mod assets;
 pub mod cli;
 pub mod components;
 pub mod config;
+pub mod core;
+pub mod database;
 pub mod mode;
+pub mod portfolio;
 pub mod screens;
+pub mod statistic;
+pub mod strategy;
+pub mod trading;
 pub mod tui;
 pub mod utils;
 

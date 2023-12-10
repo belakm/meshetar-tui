@@ -1,8 +1,16 @@
+const IS_LIVE: bool = false;
+const BACKTEST_LAST_N_CANDLES: usize = 1440;
+const FETCH_N_DAYS_HISTORY: i64 = 5;
+const STARTING_EQUITY: f64 = 1000.0;
+const EXCHANGE_FEE: f64 = 0.0;
+const DEFAULT_ASSET: Asset = Asset::BTCUSDT;
+
+use std::sync::Arc;
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::Rect;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, Mutex};
 
 use crate::{
   action::{Action, MoveDirection},
@@ -31,6 +39,7 @@ pub struct App {
   pub mode: Mode,
   action_tx: UnboundedSender<Action>,
   action_rx: UnboundedReceiver<Action>,
+  database: Arc<Mutex<Database>>
   tui: Tui,
 }
 
@@ -82,6 +91,9 @@ impl App {
   pub async fn run(&mut self) -> Result<()> {
     self.tui.enter()?;
     let action_tx = self.action_tx.clone();
+
+    let core = 
+
     loop {
       if let Some(e) = self.tui.next().await {
         match e {

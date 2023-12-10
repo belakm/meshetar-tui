@@ -6,6 +6,10 @@ use lazy_static::lazy_static;
 use tracing::error;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, Layer};
+pub mod binance_client;
+pub mod formatting;
+pub mod load_config;
+pub mod serde_utils;
 
 pub static GIT_COMMIT_HASH: &'static str = env!("_GIT_INFO");
 
@@ -159,4 +163,9 @@ Authors: {author}
 Config directory: {config_dir_path}
 Data directory: {data_dir_path}"
   )
+}
+
+pub fn remove_vec_items_from_start<T>(mut vec: Vec<T>, n: usize) -> Vec<T> {
+  vec.drain(0..n);
+  vec
 }
