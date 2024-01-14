@@ -8,7 +8,9 @@ pub struct Config {
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
-  #[error("Problem opening config file")]
+  #[error(
+    "Problem opening config file, make sure configuration exists at `.config/env.toml`."
+  )]
   ReadError,
   #[error("Problem setting configuration")]
   SetError,
@@ -16,7 +18,7 @@ pub enum ConfigError {
 // TODO: ditch the unwraps and emit ConfigError instead
 pub fn read_config() -> Result<Config, ConfigError> {
   let config_file =
-    std::fs::read_to_string("config.toml").map_err(|_| ConfigError::ReadError)?;
+    std::fs::read_to_string(".config/env.toml").map_err(|_| ConfigError::ReadError)?;
   let config: Config = toml::from_str(&config_file).map_err(|_| ConfigError::SetError)?;
   Ok(config)
 }

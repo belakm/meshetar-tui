@@ -75,6 +75,7 @@ pub struct App {
   database: Arc<Mutex<Database>>,
   portfolio: Arc<Mutex<Portfolio>>,
   core: Core,
+  core_command_tx: mpsc::Sender<Command>,
   tui: Tui,
 }
 
@@ -114,7 +115,7 @@ impl App {
     ));
 
     let mut traders = Vec::new();
-    let (command_transmitter, command_receiver) = mpsc::channel::<Command>(20);
+    let (core_command_tx, command_receiver) = mpsc::channel::<Command>(20);
     let (trader_command_transmitter, trader_command_receiver) =
       mpsc::channel::<Command>(20);
     let command_transmitters =
@@ -164,6 +165,7 @@ impl App {
       database,
       portfolio,
       core,
+      core_command_tx,
     })
   }
 
@@ -176,10 +178,11 @@ impl App {
       ScreenId::RUNNING => {
         let mut running = Running::default();
         running.set_mode(RunningMode::RUNNING);
+        self.action_tx.send(Action::CoreCommand(Command::Start));
         Box::new(running)
       },
       ScreenId::BACKTEST => Box::new(Running::default()),
-      ScreenId::RUNCONFIG => Box::new(RunConfig::default()),
+      ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
     };
     screen.register_action_handler(self.action_tx.clone())?;
     screen.register_config_handler(self.config.clone())?;
@@ -236,9 +239,9 @@ impl App {
           action_tx.send(action)?;
         }
       }
-
       while let Ok(action) = self.action_rx.try_recv() {
         log::debug!("{action:?}");
+        let action_clone = action.clone();
         match action {
           Action::Tick => {},
           Action::Quit => self.should_quit = true,
@@ -268,9 +271,17 @@ impl App {
           Action::Navigate(screen) => {
             self.navigate(screen)?;
           },
+          Action::CoreCommand(command) => match command {
+            Command::Start => {
+              // self.core.run().await?;
+            },
+            _ => {
+              // self.core_command_tx.send(command).await?;
+            },
+          },
           _ => {},
         }
-        if let Some(action) = self.screen.update(action.clone())? {
+        if let Some(action) = self.screen.update(action_clone.clone())? {
           action_tx.send(action)?
         };
       }

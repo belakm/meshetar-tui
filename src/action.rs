@@ -6,7 +6,7 @@ use serde::{
   Deserialize, Serialize,
 };
 
-use crate::screens::ScreenId;
+use crate::{core::Command, screens::ScreenId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum Action {
@@ -23,6 +23,7 @@ pub enum Action {
   Key(KeyCode),
   Move(MoveDirection),
   Accept,
+  CoreCommand(Command),
 }
 
 impl<'de> Deserialize<'de> for Action {
@@ -56,7 +57,11 @@ impl<'de> Deserialize<'de> for Action {
             Ok(Action::Error(error_msg.to_string()))
           },
           data if data.starts_with("Resize(") => {
-            let parts: Vec<&str> = data.trim_start_matches("Resize(").trim_end_matches(")").split(',').collect();
+            let parts: Vec<&str> = data
+              .trim_start_matches("Resize(")
+              .trim_end_matches(")")
+              .split(',')
+              .collect();
             if parts.len() == 2 {
               let width: u16 = parts[0].trim().parse().map_err(E::custom)?;
               let height: u16 = parts[1].trim().parse().map_err(E::custom)?;

@@ -8,8 +8,11 @@ pub struct Theme {
   bg: Color,
   bg_button: Color,
   bg_button_selected: Color,
+  bg_action_field: Color,
+  bg_action_field_active: Color,
+  bg_action_field_error: Color,
   border: Color,
-  border_selected: Color,
+  border_active: Color,
   text: Color,
   text_selected: Color,
   text_button: Color,
@@ -20,9 +23,12 @@ static DEFAULT_THEME: Theme = Theme {
   bg: Color::Indexed(234),
   bg_button: Color::Indexed(236),
   bg_button_selected: Color::Indexed(178),
+  bg_action_field: Color::Indexed(236),
+  bg_action_field_active: Color::Indexed(233),
+  bg_action_field_error: Color::Indexed(52),
   border: Color::Indexed(250),
+  border_active: Color::Green,
   text: Color::Indexed(252),
-  border_selected: Color::Green,
   text_selected: Color::White,
   text_button: Color::Indexed(252),
   text_button_selected: Color::Black,
@@ -38,19 +44,30 @@ pub fn stylized_block<'a>(selected: bool) -> Block<'a> {
     .border_type(BorderType::Rounded)
 }
 
-pub fn default_style(selected: bool) -> Style {
-  if selected {
+pub fn default_style(active: bool) -> Style {
+  if active {
     Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.text_selected)
   } else {
     Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.text)
   }
 }
 
-pub fn default_border_style(selected: bool) -> Style {
-  if selected {
-    Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.border_selected)
+pub fn default_border_style(active: bool) -> Style {
+  if active {
+    Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.border_active)
   } else {
     Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.border)
+  }
+}
+
+pub fn default_action_block_style(active: bool, error: bool) -> Style {
+  let text_style = if active { DEFAULT_THEME.text_selected } else { DEFAULT_THEME.text };
+  if error {
+    Style::default().bg(DEFAULT_THEME.bg_action_field_error).fg(text_style)
+  } else if active {
+    Style::default().bg(DEFAULT_THEME.bg_action_field_active).fg(text_style)
+  } else {
+    Style::default().bg(DEFAULT_THEME.bg_action_field).fg(text_style)
   }
 }
 
@@ -75,13 +92,18 @@ pub fn button_style(selected: bool) -> Style {
       .fg(DEFAULT_THEME.text_button_selected)
       .add_modifier(Modifier::BOLD)
   } else {
-    Style::default().bg(DEFAULT_THEME.bg_button).fg(DEFAULT_THEME.text_button).add_modifier(Modifier::BOLD)
+    Style::default()
+      .bg(DEFAULT_THEME.bg_button)
+      .fg(DEFAULT_THEME.text_button)
+      .add_modifier(Modifier::BOLD)
   }
 }
 
 pub fn button_border_style(selected: bool) -> Style {
   if selected {
-    Style::default().bg(DEFAULT_THEME.bg_button_selected).fg(DEFAULT_THEME.bg_button_selected)
+    Style::default()
+      .bg(DEFAULT_THEME.bg_button_selected)
+      .fg(DEFAULT_THEME.bg_button_selected)
   } else {
     Style::default().bg(DEFAULT_THEME.bg_button).fg(DEFAULT_THEME.bg_button)
   }
@@ -97,9 +119,14 @@ pub fn outer_container_block<'a>() -> Block<'a> {
     .border_type(BorderType::Rounded)
 }
 
+pub fn input_block<'a>(active: bool, error: bool) -> Block<'a> {
+  Block::new().borders(Borders::BOTTOM).style(default_action_block_style(active, error))
+}
+
 pub fn default_layout(area: Rect) -> (Rect, Rect) {
-  let layout =
-    Layout::default().constraints(vec![Constraint::Length(4), Constraint::Max(2), Constraint::Min(0)]).split(area);
+  let layout = Layout::default()
+    .constraints(vec![Constraint::Length(4), Constraint::Max(2), Constraint::Min(0)])
+    .split(area);
   (layout[0], layout[2])
 }
 
@@ -111,7 +138,9 @@ pub fn logo<'a>() -> Paragraph<'a> {
 }
 
 pub fn default_header<'a>(text: &'a str) -> Paragraph<'a> {
-  Paragraph::new(text).alignment(Alignment::Center).block(stylized_block(false).borders(Borders::BOTTOM))
+  Paragraph::new(text)
+    .alignment(Alignment::Center)
+    .block(stylized_block(false).borders(Borders::BOTTOM))
 }
 
 pub fn centered_text<'a>(text: &'a str) -> Paragraph<'a> {
