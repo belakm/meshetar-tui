@@ -24,9 +24,20 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::info;
 
 #[derive(
-  PartialEq, Display, Debug, Hash, Eq, Clone, Copy, Serialize, Deserialize, PartialOrd,
+  PartialEq,
+  Default,
+  Display,
+  Debug,
+  Hash,
+  Eq,
+  Clone,
+  Copy,
+  Serialize,
+  Deserialize,
+  PartialOrd,
 )]
 pub enum Pair {
+  #[default]
   BTCUSDT,
   ETHBTC,
 }

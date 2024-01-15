@@ -176,11 +176,14 @@ impl App {
       ScreenId::MODELS => Box::new(Models::default()),
       ScreenId::REPORT => Box::new(Report::default()),
       ScreenId::RUNNING => {
-        let mut running = Running::default();
+        let mut running = Running::new(self.database.clone(), Pair::BTCUSDT);
         running.set_mode(RunningMode::RUNNING);
         Box::new(running)
       },
-      ScreenId::BACKTEST => Box::new(Running::default()),
+      ScreenId::BACKTEST => {
+        let running = Running::new(self.database.clone(), Pair::BTCUSDT);
+        Box::new(running)
+      },
       ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
     };
     screen.register_action_handler(self.action_tx.clone())?;
@@ -272,7 +275,7 @@ impl App {
           },
           Action::CoreCommand(command) => match command {
             Command::Start => {
-              //self.core.run().await?;
+              self.core.run().await?;
             },
             _ => {
               self.core_command_tx.send(command).await?;

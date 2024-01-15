@@ -1,6 +1,7 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::Action,
+  assets::Pair,
   components::style::{
     button, default_layout, logo, outer_container_block, stylized_block,
   },
@@ -28,11 +29,12 @@ pub struct Running {
   config: Config,
   mode: RunningMode,
   database: Option<Arc<Mutex<Database>>>,
+  pair: Pair,
 }
 
 impl Running {
-  pub fn new(database: Arc<Mutex<Database>>) -> Self {
-    Self { database: Some(database), ..Self::default() }
+  pub fn new(database: Arc<Mutex<Database>>, pair: Pair) -> Self {
+    Self { database: Some(database), pair, ..Self::default() }
   }
 
   pub fn set_mode(&mut self, mode: RunningMode) {
@@ -68,12 +70,22 @@ impl Screen for Running {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+    let stats = {
+      if let Some(db) = self.database.clone() {
+        let mut db = db.try_lock()?;
+        let stats = db.get_statistics(&self.pair.clone());
+        Some(stats)
+      } else {
+        None
+      }
+    };
+
     f.render_widget(outer_container_block(), area);
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
     let (header_area, content_area) = default_layout(inner_area);
     f.render_widget(logo(), header_area);
     let content_layout = Layout::default()
-      .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
+      .constraints(vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(3)])
       .split(content_area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
@@ -82,11 +94,16 @@ impl Screen for Running {
         Constraint::Percentage(30),
         Constraint::Percentage(40),
       ])
-      .split(content_layout[1]);
-    f.render_widget(
-      Paragraph::new("Running :) TODO: Loader and stats"),
-      content_layout[0],
-    );
+      .split(content_layout[2]);
+    f.render_widget(Paragraph::new("Running :)"), content_layout[0]);
+    if let Some(Ok(stats)) = stats {
+      f.render_widget(
+        Paragraph::new(format!("{}", stats.pnl.total_pnl)),
+        content_layout[1],
+      );
+    } else {
+      f.render_widget(Paragraph::new("Waiting for DB"), content_layout[1]);
+    }
     f.render_widget(button("Finish", true), button_layout[1]);
     Ok(())
   }

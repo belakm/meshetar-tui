@@ -271,7 +271,7 @@ impl Database {
 
   pub async fn add_candles(
     &mut self,
-    asset: Pair,
+    pair: Pair,
     candles: Vec<Candle>,
   ) -> Result<(), DatabaseError> {
     let connection = DB_POOL.get().unwrap();
@@ -283,7 +283,7 @@ impl Database {
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                 "#,
             )
-            .bind(asset.to_string())
+            .bind(pair.to_string())
             .bind(candle.open_time)
             .bind(candle.open)
             .bind(candle.high)
@@ -301,11 +301,11 @@ impl Database {
 
   pub async fn fetch_all_candles(
     &mut self,
-    asset: Pair,
+    pair: Pair,
   ) -> Result<Vec<Candle>, DatabaseError> {
     let connection = DB_POOL.get().unwrap();
     let candles: Vec<Candle> = sqlx::query_as("SELECT * FROM candles WHERE asset = ?1")
-      .bind(asset.to_string())
+      .bind(pair.to_string())
       .fetch_all(connection)
       .await?;
     Ok(candles)
@@ -313,18 +313,15 @@ impl Database {
 
   pub fn set_statistics(
     &mut self,
-    asset: Pair,
+    pair: Pair,
     statistic: TradingSummary,
   ) -> Result<(), DatabaseError> {
-    self.statistics.insert(asset, statistic);
+    self.statistics.insert(pair, statistic);
     Ok(())
   }
 
-  pub fn get_statistics(
-    &mut self,
-    asset: &Pair,
-  ) -> Result<TradingSummary, DatabaseError> {
-    self.statistics.get(asset).copied().ok_or(DatabaseError::DataMissing)
+  pub fn get_statistics(&mut self, pair: &Pair) -> Result<TradingSummary, DatabaseError> {
+    self.statistics.get(pair).copied().ok_or(DatabaseError::DataMissing)
   }
 }
 
