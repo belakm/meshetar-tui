@@ -3,7 +3,7 @@ pub mod error;
 
 use self::error::StrategyError;
 use crate::{
-  assets::{Asset, Candle, MarketEvent, MarketEventDetail, MarketMeta},
+  assets::{Candle, MarketEvent, MarketEventDetail, MarketMeta, Pair},
   utils::remove_vec_items_from_start,
 };
 use chrono::{DateTime, Utc};
@@ -14,7 +14,7 @@ use std::{cmp::Ordering, collections::HashMap};
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Signal {
   pub time: DateTime<Utc>,
-  pub asset: Asset,
+  pub asset: Pair,
   pub market_meta: MarketMeta,
   pub signals: HashMap<Decision, SignalStrength>,
 }
@@ -73,10 +73,10 @@ impl Decision {
 pub struct SignalStrength(pub f64);
 
 pub struct Strategy {
-  asset: Asset,
+  asset: Pair,
 }
 impl Strategy {
-  pub fn new(asset: Asset) -> Self {
+  pub fn new(asset: Pair) -> Self {
     Strategy { asset }
   }
   pub async fn generate_signal(
@@ -111,7 +111,7 @@ impl Strategy {
   pub async fn generate_backtest_signals(
     open_time: DateTime<Utc>,
     candles: Vec<Candle>,
-    asset: Asset,
+    asset: Pair,
     buffer_n_of_candles: usize,
   ) -> Result<Option<Vec<Option<Signal>>>, StrategyError> {
     let pyscript = include_str!("../../models/backtest.py");

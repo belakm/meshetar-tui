@@ -3,7 +3,7 @@ const BACKTEST_LAST_N_CANDLES: usize = 1440;
 const FETCH_N_DAYS_HISTORY: i64 = 5;
 const STARTING_EQUITY: f64 = 1000.0;
 const EXCHANGE_FEE: f64 = 0.0;
-const DEFAULT_ASSET: Asset = Asset::BTCUSDT;
+const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
 
 use chrono::Utc;
 use color_eyre::eyre::Result;
@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 use crate::{
   action::{Action, MoveDirection},
-  assets::{error::AssetError, Asset, MarketFeed},
+  assets::{error::AssetError, MarketFeed, Pair},
   components::style::stylized_block,
   config::Config,
   core::{error::CoreError, Command, Core},

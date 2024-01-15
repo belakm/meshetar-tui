@@ -26,7 +26,7 @@ use tracing::info;
 #[derive(
   PartialEq, Display, Debug, Hash, Eq, Clone, Copy, Serialize, Deserialize, PartialOrd,
 )]
-pub enum Asset {
+pub enum Pair {
   BTCUSDT,
   ETHBTC,
 }
@@ -41,7 +41,7 @@ pub enum Feed {
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct MarketEvent {
   pub time: DateTime<Utc>,
-  pub asset: Asset,
+  pub asset: Pair,
   pub detail: MarketEventDetail,
 }
 
@@ -142,7 +142,7 @@ pub enum Side {
 pub struct MarketFeed {
   pub market_receiver: Option<mpsc::UnboundedReceiver<MarketEvent>>,
   is_live: bool,
-  asset: Asset,
+  asset: Pair,
   database: Arc<Mutex<Database>>,
   last_n_candles: usize,
 }
@@ -183,14 +183,14 @@ impl MarketFeed {
   }
   async fn new_live_feed(
     &self,
-    asset: Asset,
+    asset: Pair,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
     let ticker = asset_ticker::new_ticker(asset).await?;
     Ok(ticker)
   }
   async fn new_backtest(
     &self,
-    asset: Asset,
+    asset: Pair,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
     buffer_n_of_candles: usize,
@@ -201,7 +201,7 @@ impl MarketFeed {
     Ok(ticker)
   }
   pub fn new(
-    asset: Asset,
+    asset: Pair,
     is_live: bool,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
@@ -224,7 +224,7 @@ impl Default for MarketMeta {
 
 pub async fn fetch_candles(
   duration: Duration,
-  asset: Asset,
+  asset: Pair,
   binance_client: Arc<BinanceClient>,
 ) -> Result<Vec<Candle>, AssetError> {
   let mut start_time: i64 = (Utc::now() - duration).timestamp_millis();

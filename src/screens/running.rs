@@ -6,13 +6,14 @@ use crate::{
   },
   config::{Config, KeyBindings},
   core::Command,
+  database::Database,
 };
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
-use tokio::sync::mpsc::UnboundedSender;
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::{mpsc::UnboundedSender, Mutex};
 
 #[derive(Default)]
 pub enum RunningMode {
@@ -26,11 +27,12 @@ pub struct Running {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   mode: RunningMode,
+  database: Option<Arc<Mutex<Database>>>,
 }
 
 impl Running {
-  pub fn new() -> Self {
-    Self::default()
+  pub fn new(database: Arc<Mutex<Database>>) -> Self {
+    Self { database: Some(database), ..Self::default() }
   }
 
   pub fn set_mode(&mut self, mode: RunningMode) {

@@ -116,7 +116,7 @@ impl Screen for RunConfig {
             } else {
               ScreenId::RUNNING
             };
-            command_tx.send(Action::CoreCommand(Command::Start));
+            command_tx.send(Action::CoreCommand(Command::Start))?;
             command_tx.send(Action::Navigate(screen_id))?;
           } else {
             // ACTIVATE INPUTS

@@ -1,4 +1,4 @@
-use super::{error::AssetError, Asset, MarketEvent, MarketEventDetail};
+use super::{error::AssetError, MarketEvent, MarketEventDetail, Pair};
 use crate::{
   database::Database,
   strategy::{Signal, Strategy},
@@ -12,13 +12,13 @@ use tokio::sync::{
 use tracing::{error, info};
 
 pub async fn new_ticker(
-  asset: Asset,
+  pair: Pair,
   database: Arc<Mutex<Database>>,
   last_n_candles: usize,
   buffer_n_of_candles: usize,
 ) -> Result<UnboundedReceiver<MarketEvent>, AssetError> {
   let (tx, rx) = mpsc::unbounded_channel();
-  let candles = database.lock().await.fetch_all_candles(asset.clone()).await?;
+  let candles = database.lock().await.fetch_all_candles(pair.clone()).await?;
 
   info!("debug {}{}", candles.len(), last_n_candles);
 
@@ -34,7 +34,7 @@ pub async fn new_ticker(
     match Strategy::generate_backtest_signals(
       open_time,
       candles_copy,
-      asset.clone(),
+      pair.clone(),
       buffer_n_of_candles,
     )
     .await
@@ -52,7 +52,7 @@ pub async fn new_ticker(
             if signal.is_some() { signal.unwrap().to_owned() } else { None };
           let _ = tx.send(MarketEvent {
             time: candle.close_time,
-            asset: asset.clone(),
+            asset: pair.clone(),
             detail: MarketEventDetail::BacktestCandle((candle.to_owned(), signal)),
           });
         }

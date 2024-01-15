@@ -1,7 +1,7 @@
 pub mod error;
 
 use crate::{
-  assets::{fetch_candles, Asset},
+  assets::{fetch_candles, Pair},
   database::Database,
   portfolio::Portfolio,
   statistic::{StatisticConfig, TradingSummary},
@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 #[derive(Serialize, Clone, Eq, PartialEq, Debug)]
 pub enum Command {
-  ExitPosition(Asset),
+  ExitPosition(Pair),
   ExitAllPositions,
   Terminate(String),
   Start,
@@ -34,7 +34,7 @@ pub struct Core {
   portfolio: Arc<Mutex<Portfolio>>,
   binance_client: Arc<BinanceClient>,
   pub command_reciever: Receiver<Command>,
-  command_transmitters: HashMap<Asset, mpsc::Sender<Command>>,
+  command_transmitters: HashMap<Pair, mpsc::Sender<Command>>,
   statistics_config: StatisticConfig,
   traders: Vec<Trader>,
   n_days_history_fetch: i64,
@@ -111,7 +111,7 @@ impl Core {
   }
 
   async fn fetch_history(&mut self, n_days: i64) -> mpsc::Receiver<bool> {
-    let assets: Vec<Asset> =
+    let assets: Vec<Pair> =
       self.traders.iter().map(|trader| trader.asset.clone()).collect();
     let binance_client = self.binance_client.clone();
     let handles = assets.into_iter().map(move |asset| {
@@ -181,7 +181,7 @@ impl Core {
       }
     }
   }
-  async fn exit_position(&self, asset: Asset) {
+  async fn exit_position(&self, asset: Pair) {
     if let Some((market_ref, command_tx)) =
       self.command_transmitters.get_key_value(&asset)
     {
@@ -273,7 +273,7 @@ pub struct CoreBuilder {
   database: Option<Arc<Mutex<Database>>>,
   binance_client: Option<BinanceClient>,
   command_reciever: Option<Receiver<Command>>,
-  command_transmitters: Option<HashMap<Asset, mpsc::Sender<Command>>>,
+  command_transmitters: Option<HashMap<Pair, mpsc::Sender<Command>>>,
   traders: Option<Vec<Trader>>,
   statistics_config: Option<StatisticConfig>,
   n_days_history_fetch: Option<i64>,
@@ -305,10 +305,7 @@ impl CoreBuilder {
   pub fn command_reciever(self, command_reciever: Receiver<Command>) -> Self {
     CoreBuilder { command_reciever: Some(command_reciever), ..self }
   }
-  pub fn command_transmitters(
-    self,
-    value: HashMap<Asset, mpsc::Sender<Command>>,
-  ) -> Self {
+  pub fn command_transmitters(self, value: HashMap<Pair, mpsc::Sender<Command>>) -> Self {
     CoreBuilder { command_transmitters: Some(value), ..self }
   }
   pub fn database(self, value: Arc<Mutex<Database>>) -> Self {

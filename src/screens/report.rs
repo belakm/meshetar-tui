@@ -65,7 +65,10 @@ impl Screen for Report {
         Constraint::Percentage(40),
       ])
       .split(content_layout[1]);
-    f.render_widget(Paragraph::new("TODO: Report"), content_layout[0]);
+    f.render_widget(
+      Paragraph::new("Report was generated in summary.html"),
+      content_layout[0],
+    );
     f.render_widget(button("Back", true), button_layout[1]);
     Ok(())
   }

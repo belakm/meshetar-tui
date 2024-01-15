@@ -16,7 +16,6 @@ pub struct Input {
 }
 impl Input {
   pub fn new(initial_value: Option<i64>, label: Option<String>) -> Self {
-    log::error!("label {:?}", label);
     Self {
       value: initial_value.unwrap_or(0),
       label: label.unwrap_or("".to_string()),

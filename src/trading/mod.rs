@@ -2,7 +2,7 @@ pub mod error;
 pub mod execution;
 
 use crate::{
-  assets::{Asset, Feed, MarketEventDetail, MarketFeed},
+  assets::{Feed, MarketEventDetail, MarketFeed, Pair},
   core::Command,
   events::MessageTransmitter,
   events::{Event, EventTx},
@@ -19,19 +19,13 @@ use uuid::Uuid;
 
 use self::{error::TraderError, execution::Execution};
 
-#[derive(Copy, Clone, Debug, Serialize, Display, EnumString, PartialEq)]
-pub enum Pair {
-  BTCUSDT,
-  ETHBTC,
-}
-
 #[derive(Clone, Eq, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct SignalForceExit {
   pub time: DateTime<Utc>,
-  pub asset: Asset,
+  pub asset: Pair,
 }
 impl SignalForceExit {
-  fn from(asset: Asset, time: Option<DateTime<Utc>>) -> Self {
+  fn from(asset: Pair, time: Option<DateTime<Utc>>) -> Self {
     let time = if time.is_some() { time.unwrap() } else { Utc::now() };
     SignalForceExit { time, asset }
   }
@@ -39,7 +33,7 @@ impl SignalForceExit {
 
 pub struct Trader {
   core_id: Uuid,
-  pub asset: Asset,
+  pub asset: Pair,
   command_reciever: mpsc::Receiver<Command>,
   event_transmitter: EventTx,
   event_queue: VecDeque<Event>,
@@ -221,7 +215,7 @@ impl Trader {
 
 pub struct TraderBuilder {
   core_id: Option<Uuid>,
-  asset: Option<Asset>,
+  asset: Option<Pair>,
   market_feed: Option<MarketFeed>,
   command_reciever: Option<mpsc::Receiver<Command>>,
   event_transmitter: Option<EventTx>,
@@ -250,7 +244,7 @@ impl TraderBuilder {
     Self { core_id: Some(value), ..self }
   }
 
-  pub fn asset(self, value: Asset) -> Self {
+  pub fn asset(self, value: Pair) -> Self {
     Self { asset: Some(value), ..self }
   }
 
