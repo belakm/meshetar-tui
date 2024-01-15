@@ -9,6 +9,7 @@ use crate::{
     },
   },
   config::{Config, KeyBindings},
+  core::Command,
 };
 use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -115,6 +116,7 @@ impl Screen for RunConfig {
             } else {
               ScreenId::RUNNING
             };
+            command_tx.send(Action::CoreCommand(Command::Start));
             command_tx.send(Action::Navigate(screen_id))?;
           } else {
             // ACTIVATE INPUTS

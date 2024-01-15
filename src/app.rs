@@ -178,7 +178,6 @@ impl App {
       ScreenId::RUNNING => {
         let mut running = Running::default();
         running.set_mode(RunningMode::RUNNING);
-        self.action_tx.send(Action::CoreCommand(Command::Start));
         Box::new(running)
       },
       ScreenId::BACKTEST => Box::new(Running::default()),
@@ -273,10 +272,10 @@ impl App {
           },
           Action::CoreCommand(command) => match command {
             Command::Start => {
-              // self.core.run().await?;
+              //self.core.run().await?;
             },
             _ => {
-              // self.core_command_tx.send(command).await?;
+              self.core_command_tx.send(command).await?;
             },
           },
           _ => {},

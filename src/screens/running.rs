@@ -1,8 +1,11 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::Action,
-  components::style::{button, default_layout, logo, outer_container_block, stylized_block},
+  components::style::{
+    button, default_layout, logo, outer_container_block, stylized_block,
+  },
   config::{Config, KeyBindings},
+  core::Command,
 };
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -51,6 +54,9 @@ impl Screen for Running {
       Action::Tick => {},
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
+          command_tx.send(Action::CoreCommand(Command::Terminate(
+            "User finished the run".to_string(),
+          )))?;
           command_tx.send(Action::Navigate(ScreenId::REPORT))?;
         }
       },
@@ -64,13 +70,21 @@ impl Screen for Running {
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
     let (header_area, content_area) = default_layout(inner_area);
     f.render_widget(logo(), header_area);
-    let content_layout =
-      Layout::default().constraints(vec![Constraint::Min(0), Constraint::Length(3)]).split(content_area);
+    let content_layout = Layout::default()
+      .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
+      .split(content_area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(30), Constraint::Percentage(40)])
+      .constraints(vec![
+        Constraint::Percentage(40),
+        Constraint::Percentage(30),
+        Constraint::Percentage(40),
+      ])
       .split(content_layout[1]);
-
+    f.render_widget(
+      Paragraph::new("Running :) TODO: Loader and stats"),
+      content_layout[0],
+    );
     f.render_widget(button("Finish", true), button_layout[1]);
     Ok(())
   }
