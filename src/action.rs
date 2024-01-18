@@ -6,9 +6,12 @@ use serde::{
   Deserialize, Serialize,
 };
 
-use crate::{core::Command, screens::ScreenId};
+use crate::{
+  core::{Command, CoreMessage},
+  screens::ScreenId,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Action {
   Tick,
   Render,
@@ -24,6 +27,7 @@ pub enum Action {
   Move(MoveDirection),
   Accept,
   CoreCommand(Command),
+  CoreMessage(CoreMessage),
 }
 
 impl<'de> Deserialize<'de> for Action {

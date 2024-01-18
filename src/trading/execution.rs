@@ -38,7 +38,7 @@ impl Execution {
     let fill_time = if live_time { Utc::now() } else { order.time };
     let fill_event = FillEvent::builder()
       .time(fill_time)
-      .asset(order.asset.clone())
+      .asset(order.pair.clone())
       .market_meta(order.market_meta)
       .decision(order.decision)
       .quantity(order.quantity)

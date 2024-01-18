@@ -5,7 +5,7 @@ const STARTING_EQUITY: f64 = 1000.0;
 const EXCHANGE_FEE: f64 = 0.0;
 const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::Rect;
@@ -23,7 +23,7 @@ use crate::{
   assets::{error::AssetError, MarketFeed, Pair},
   components::style::stylized_block,
   config::Config,
-  core::{error::CoreError, Command, Core},
+  core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
   events::EventTx,
   mode::Mode,
@@ -34,7 +34,7 @@ use crate::{
     home::Home,
     models::Models,
     report::Report,
-    run_config::RunConfig,
+    run_config::{CoreConfiguration, RunConfig},
     running::{Running, RunningMode},
     sessions::Sessions,
     Screen, ScreenId,
@@ -74,12 +74,91 @@ pub struct App {
   action_rx: UnboundedReceiver<Action>,
   database: Arc<Mutex<Database>>,
   portfolio: Arc<Mutex<Portfolio>>,
-  core: Core,
-  core_command_tx: mpsc::Sender<Command>,
+  core: Option<Core>,
+  core_command_tx: Option<mpsc::Sender<Command>>,
   tui: Tui,
 }
 
+static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
+  starting_equity: STARTING_EQUITY,
+  trading_days_per_year: 365,
+  risk_free_return: 0.0,
+  created_at: DateTime::UNIX_EPOCH,
+};
+
 impl App {
+  async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<()> {
+    let mut traders = Vec::new();
+    let core_id = Uuid::new_v4();
+    let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
+    let event_transmitter = EventTx::new(event_transmitter);
+    let (core_command_tx, core_command_rx) = mpsc::channel::<Command>(20);
+    let (core_message_tx, mut core_message_rx) = mpsc::channel::<CoreMessage>(20);
+    let (trader_command_transmitter, trader_command_receiver) =
+      mpsc::channel::<Command>(20);
+    let command_transmitters =
+      HashMap::from([(DEFAULT_ASSET, trader_command_transmitter)]);
+    traders.push(
+      Trader::builder()
+        .core_id(core_id)
+        .pair(DEFAULT_ASSET)
+        .trading_is_live(IS_LIVE)
+        .command_reciever(trader_command_receiver)
+        .event_transmitter(event_transmitter)
+        .portfolio(Arc::clone(&self.portfolio))
+        .market_feed(MarketFeed::new(
+          DEFAULT_ASSET,
+          core_configuration.run_live,
+          self.database.clone(),
+          core_configuration.backtest_last_n_candles,
+        ))
+        .strategy(Strategy::new(DEFAULT_ASSET))
+        .execution(Execution::new(core_configuration.exchange_fee))
+        .build()?,
+    );
+
+    let statistic_config = StatisticConfig {
+      starting_equity: core_configuration.starting_equity,
+      created_at: Utc::now(),
+      ..STATISTIC_CONFIG
+    };
+
+    let mut core = Core::builder()
+      .id(core_id)
+      .binance_client(BinanceClient::new().await.map_err(MainError::from)?)
+      .portfolio(self.portfolio.clone())
+      .command_rx(core_command_rx)
+      .message_tx(core_message_tx)
+      .command_transmitters(command_transmitters)
+      .traders(traders)
+      .database(self.database.clone())
+      .statistics_config(statistic_config)
+      .n_days_history_fetch(FETCH_N_DAYS_HISTORY)
+      .build()?;
+
+    self
+      .portfolio
+      .lock()
+      .await
+      .init_core_in_db(core_id, core_configuration.starting_equity)
+      .await?;
+
+    self.core_command_tx = Some(core_command_tx);
+
+    let action_tx_clone = self.action_tx.clone();
+    tokio::spawn(async move {
+      while let Ok(msg) = core_message_rx.try_recv() {
+        let _ = action_tx_clone.send(Action::CoreMessage(msg));
+      }
+    });
+
+    tokio::spawn(async move {
+      let _ = core.run().await;
+    });
+
+    Ok(())
+  }
+
   pub async fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
     let config = Config::new()?;
     let mode = Mode::Home;
@@ -89,67 +168,19 @@ impl App {
     screen.register_action_handler(action_tx.clone())?;
     screen.register_config_handler(config.clone())?;
     screen.init(tui.size()?)?;
-
-    let core_id = Uuid::new_v4();
-    let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
-    let event_transmitter = EventTx::new(event_transmitter);
     let database: Arc<Mutex<Database>> =
       Arc::new(Mutex::new(Database::new().await.map_err(MainError::from)?));
-    let statistic_config = StatisticConfig {
-      starting_equity: STARTING_EQUITY,
-      trading_days_per_year: 365,
-      risk_free_return: 0.0,
-      created_at: Utc::now(),
-    };
+
     let portfolio: Arc<Mutex<Portfolio>> = Arc::new(Mutex::new(
       Portfolio::builder()
         .database(database.clone())
-        .core_id(core_id.clone())
         .allocation_manager(Allocator { default_order_value: 100.0 })
         .risk_manager(RiskEvaluator {})
-        .starting_cash(STARTING_EQUITY)
+        .statistic_config(STATISTIC_CONFIG)
         .assets(vec![DEFAULT_ASSET])
-        .statistic_config(statistic_config.clone())
         .build()
         .await?,
     ));
-
-    let mut traders = Vec::new();
-    let (core_command_tx, command_receiver) = mpsc::channel::<Command>(20);
-    let (trader_command_transmitter, trader_command_receiver) =
-      mpsc::channel::<Command>(20);
-    let command_transmitters =
-      HashMap::from([(DEFAULT_ASSET, trader_command_transmitter)]);
-    traders.push(
-      Trader::builder()
-        .core_id(core_id)
-        .asset(DEFAULT_ASSET)
-        .trading_is_live(IS_LIVE)
-        .command_reciever(trader_command_receiver)
-        .event_transmitter(event_transmitter)
-        .portfolio(Arc::clone(&portfolio))
-        .market_feed(MarketFeed::new(
-          DEFAULT_ASSET,
-          IS_LIVE,
-          database.clone(),
-          BACKTEST_LAST_N_CANDLES,
-        ))
-        .strategy(Strategy::new(DEFAULT_ASSET))
-        .execution(Execution::new(EXCHANGE_FEE))
-        .build()?,
-    );
-
-    let core = Core::builder()
-      .id(core_id)
-      .binance_client(BinanceClient::new().await.map_err(MainError::from)?)
-      .portfolio(portfolio.clone())
-      .command_reciever(command_receiver)
-      .command_transmitters(command_transmitters)
-      .traders(traders)
-      .database(database.clone())
-      .statistics_config(statistic_config)
-      .n_days_history_fetch(FETCH_N_DAYS_HISTORY)
-      .build()?;
 
     Ok(Self {
       tick_rate,
@@ -164,8 +195,8 @@ impl App {
       tui,
       database,
       portfolio,
-      core,
-      core_command_tx,
+      core: None,
+      core_command_tx: None,
     })
   }
 
@@ -274,11 +305,18 @@ impl App {
             self.navigate(screen)?;
           },
           Action::CoreCommand(command) => match command {
-            Command::Start => {
-              self.core.run().await?;
+            Command::Start(core_configuration) => {
+              self.new_run(core_configuration).await?
             },
             _ => {
-              self.core_command_tx.send(command).await?;
+              if let Some(tx) = &self.core_command_tx {
+                tx.send(command).await?;
+              }
+            },
+          },
+          Action::CoreMessage(msg) => match msg {
+            CoreMessage::Finished => {
+              self.navigate(ScreenId::REPORT)?;
             },
           },
           _ => {},
@@ -291,7 +329,6 @@ impl App {
         self.tui.suspend()?;
         action_tx.send(Action::Resume)?;
         self.tui = tui::Tui::new()?.tick_rate(self.tick_rate).frame_rate(self.frame_rate);
-        // tui.mouse(true);
         self.tui.enter()?;
       } else if self.should_quit {
         self.tui.stop()?;

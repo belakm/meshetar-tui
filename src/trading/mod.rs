@@ -33,7 +33,7 @@ impl SignalForceExit {
 
 pub struct Trader {
   core_id: Uuid,
-  pub asset: Pair,
+  pub pair: Pair,
   command_reciever: mpsc::Receiver<Command>,
   event_transmitter: EventTx,
   event_queue: VecDeque<Event>,
@@ -49,7 +49,7 @@ impl Trader {
     TraderBuilder::new()
   }
   pub async fn run(&mut self) -> Result<(), TraderError> {
-    info!("Trader {} starting up.", self.asset);
+    info!("Trader {} starting up.", self.pair);
     let _ = self.market_feed.run().await?;
     let _ = tokio::time::sleep(std::time::Duration::from_millis(1)).await;
     let mut backtest_stats_initialized = false;
@@ -73,20 +73,20 @@ impl Trader {
         Feed::Unhealthy => {
           warn!(
               core_id = %self.core_id,
-              asset = ?self.asset,
+              pair = ?self.pair,
               action = "continuing while waiting for healthy Feed",
               "MarketFeed unhealthy"
           );
           continue;
         },
         Feed::Finished => {
-          let positions = self.portfolio.lock().await.open_positions().await;
+          let positions = self.portfolio.lock().await.open_positions(self.core_id).await;
           match positions {
             Ok(positions) => {
               if positions.len() > 0 {
                 let last_update = positions.last().unwrap().meta.update_time;
                 self.event_queue.push_back(Event::SignalForceExit(
-                  SignalForceExit::from(self.asset.clone(), Some(last_update)),
+                  SignalForceExit::from(self.pair.clone(), Some(last_update)),
                 ));
               } else {
                 break;
@@ -108,7 +108,7 @@ impl Trader {
                   .portfolio
                   .lock()
                   .await
-                  .reset_statistics_with_time(&self.asset, start_time)
+                  .reset_statistics_with_time(self.pair, start_time)
                   .await;
               }
               backtest_stats_initialized = true;
@@ -124,8 +124,12 @@ impl Trader {
                 return Err(TraderError::from(e));
               },
             }
-            if let Some(position_update) =
-              self.portfolio.lock().await.update_from_market(market_event).await?
+            if let Some(position_update) = self
+              .portfolio
+              .lock()
+              .await
+              .update_from_market(self.core_id, market_event)
+              .await?
             {
               self.event_transmitter.send(Event::PositionUpdate(position_update));
             }
@@ -135,7 +139,7 @@ impl Trader {
               .portfolio
               .lock()
               .await
-              .generate_order(&signal, self.trading_is_live)
+              .generate_order(self.core_id, &signal, self.trading_is_live)
               .await
             {
               Ok(order) => {
@@ -152,7 +156,7 @@ impl Trader {
               .portfolio
               .lock()
               .await
-              .generate_exit_order(signal_force_exit, self.trading_is_live)
+              .generate_exit_order(self.core_id, signal_force_exit, self.trading_is_live)
               .await
             {
               Ok(order) => {
@@ -171,7 +175,7 @@ impl Trader {
           },
           Event::Fill(fill) => {
             let fill_side_effect_events =
-              self.portfolio.lock().await.update_from_fill(&fill).await?;
+              self.portfolio.lock().await.update_from_fill(self.core_id, &fill).await?;
             self.event_transmitter.send_many(fill_side_effect_events);
           },
           _ => {},
@@ -180,12 +184,12 @@ impl Trader {
 
       debug!(
         engine_id = &*self.core_id.to_string(),
-        asset = &*format!("{:?}", self.asset),
+        asset = &*format!("{:?}", self.pair),
         "Trader trading loop stopped"
       );
     }
 
-    info!("Trader {} shutting down.", self.asset);
+    info!("Trader {} shutting down.", self.pair);
     Ok(())
   }
   fn receive_remote_command(&mut self) -> Option<Command> {
@@ -193,7 +197,7 @@ impl Trader {
       Ok(command) => {
         debug!(
           engine_id = &*self.core_id.to_string(),
-          asset = &*format!("{:?}", self.asset),
+          asset = &*format!("{:?}", self.pair),
           command = &*format!("{:?}", command),
           "Trader received remote command"
         );
@@ -215,7 +219,7 @@ impl Trader {
 
 pub struct TraderBuilder {
   core_id: Option<Uuid>,
-  asset: Option<Pair>,
+  pair: Option<Pair>,
   market_feed: Option<MarketFeed>,
   command_reciever: Option<mpsc::Receiver<Command>>,
   event_transmitter: Option<EventTx>,
@@ -230,7 +234,7 @@ impl TraderBuilder {
     TraderBuilder {
       core_id: None,
       command_reciever: None,
-      asset: None,
+      pair: None,
       trading_is_live: None,
       event_transmitter: None,
       portfolio: None,
@@ -244,8 +248,8 @@ impl TraderBuilder {
     Self { core_id: Some(value), ..self }
   }
 
-  pub fn asset(self, value: Pair) -> Self {
-    Self { asset: Some(value), ..self }
+  pub fn pair(self, value: Pair) -> Self {
+    Self { pair: Some(value), ..self }
   }
 
   pub fn command_reciever(self, value: mpsc::Receiver<Command>) -> Self {
@@ -279,7 +283,7 @@ impl TraderBuilder {
   pub fn build(self) -> Result<Trader, TraderError> {
     Ok(Trader {
       core_id: self.core_id.ok_or(TraderError::BuilderIncomplete("engine_id"))?,
-      asset: self.asset.ok_or(TraderError::BuilderIncomplete("asset"))?,
+      pair: self.pair.ok_or(TraderError::BuilderIncomplete("pair"))?,
       command_reciever: self
         .command_reciever
         .ok_or(TraderError::BuilderIncomplete("command_rx"))?,

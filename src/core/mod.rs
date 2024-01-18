@@ -4,6 +4,7 @@ use crate::{
   assets::{fetch_candles, Pair},
   database::Database,
   portfolio::Portfolio,
+  screens::run_config::CoreConfiguration,
   statistic::{StatisticConfig, TradingSummary},
   trading::Trader,
   utils::binance_client::BinanceClient,
@@ -14,18 +15,23 @@ use prettytable::Table;
 use serde::Serialize;
 use std::{collections::HashMap, fs::File, io::Write, sync::Arc};
 use tokio::sync::{
-  mpsc::{self, Receiver},
+  mpsc::{self, Receiver, Sender},
   Mutex,
 };
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-#[derive(Serialize, Clone, Eq, PartialEq, Debug)]
+#[derive(Serialize, Clone, PartialEq, Debug)]
 pub enum Command {
   ExitPosition(Pair),
   ExitAllPositions,
   Terminate(String),
-  Start,
+  Start(CoreConfiguration),
+}
+
+#[derive(Serialize, Clone, PartialEq, Debug)]
+pub enum CoreMessage {
+  Finished,
 }
 
 pub struct Core {
@@ -33,7 +39,8 @@ pub struct Core {
   database: Arc<Mutex<Database>>,
   portfolio: Arc<Mutex<Portfolio>>,
   binance_client: Arc<BinanceClient>,
-  pub command_reciever: Receiver<Command>,
+  pub command_rx: Receiver<Command>,
+  message_tx: Sender<CoreMessage>,
   command_transmitters: HashMap<Pair, mpsc::Sender<Command>>,
   statistics_config: StatisticConfig,
   traders: Vec<Trader>,
@@ -58,7 +65,7 @@ impl Core {
                 .portfolio
                 .lock()
                 .await
-                .init_statistics(self.statistics_config)
+                .init_core_in_db(self.id, self.statistics_config.starting_equity)
                 .await;
                 break;
             }
@@ -71,7 +78,7 @@ impl Core {
           _ = trading_stopped.recv() => {
               break;
           },
-          command = self.command_reciever.recv() => {
+          command = self.command_rx.recv() => {
               if let Some(command) = command {
                   match command {
                       Command::ExitPosition(asset) => {
@@ -94,25 +101,25 @@ impl Core {
     }
 
     // File to print out the statistics
-    let mut out = File::create("summary.html").unwrap();
-    let css_content = std::fs::read_to_string("summary.css").unwrap();
-    writeln!(out, "<style>{}</style>", css_content).unwrap();
-    let (overall_stats_tables, exited_trades_table) =
-      self.generate_session_summary().await?;
-    overall_stats_tables.iter().for_each(|table| {
-      let _ = table.print_html(&mut out);
-      // let _ = table.printstd();
-    });
-    let _ = exited_trades_table.print_html(&mut out);
-
-    warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+    if let Ok(mut out) = File::create("summary.html") {
+      let css_content = std::fs::read_to_string("summary.css").unwrap();
+      writeln!(out, "<style>{}</style>", css_content).unwrap();
+      let (overall_stats_tables, exited_trades_table) =
+        self.generate_session_summary().await?;
+      overall_stats_tables.iter().for_each(|table| {
+        let _ = table.print_html(&mut out);
+        // let _ = table.printstd();
+      });
+      let _ = exited_trades_table.print_html(&mut out);
+      warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+    }
 
     Ok(())
   }
 
   async fn fetch_history(&mut self, n_days: i64) -> mpsc::Receiver<bool> {
     let assets: Vec<Pair> =
-      self.traders.iter().map(|trader| trader.asset.clone()).collect();
+      self.traders.iter().map(|trader| trader.pair.clone()).collect();
     let binance_client = self.binance_client.clone();
     let handles = assets.into_iter().map(move |asset| {
       (
@@ -272,7 +279,8 @@ pub struct CoreBuilder {
   portfolio: Option<Arc<Mutex<Portfolio>>>,
   database: Option<Arc<Mutex<Database>>>,
   binance_client: Option<BinanceClient>,
-  command_reciever: Option<Receiver<Command>>,
+  command_rx: Option<Receiver<Command>>,
+  message_tx: Option<Sender<CoreMessage>>,
   command_transmitters: Option<HashMap<Pair, mpsc::Sender<Command>>>,
   traders: Option<Vec<Trader>>,
   statistics_config: Option<StatisticConfig>,
@@ -286,7 +294,8 @@ impl CoreBuilder {
       database: None,
       portfolio: None,
       binance_client: None,
-      command_reciever: None,
+      message_tx: None,
+      command_rx: None,
       command_transmitters: None,
       traders: None,
       statistics_config: None,
@@ -302,8 +311,11 @@ impl CoreBuilder {
   pub fn binance_client(self, binance_client: BinanceClient) -> Self {
     CoreBuilder { binance_client: Some(binance_client), ..self }
   }
-  pub fn command_reciever(self, command_reciever: Receiver<Command>) -> Self {
-    CoreBuilder { command_reciever: Some(command_reciever), ..self }
+  pub fn command_rx(self, command_reciever: Receiver<Command>) -> Self {
+    CoreBuilder { command_rx: Some(command_reciever), ..self }
+  }
+  pub fn message_tx(self, command_reciever: Sender<CoreMessage>) -> Self {
+    CoreBuilder { message_tx: Some(command_reciever), ..self }
   }
   pub fn command_transmitters(self, value: HashMap<Pair, mpsc::Sender<Command>>) -> Self {
     CoreBuilder { command_transmitters: Some(value), ..self }
@@ -329,8 +341,11 @@ impl CoreBuilder {
       database: self.database.ok_or(CoreError::BuilderIncomplete("database"))?,
       portfolio: self.portfolio.ok_or(CoreError::BuilderIncomplete("portfolio"))?,
       binance_client,
-      command_reciever: self
-        .command_reciever
+      message_tx: self
+        .message_tx
+        .ok_or(CoreError::BuilderIncomplete("command reciever"))?,
+      command_rx: self
+        .command_rx
         .ok_or(CoreError::BuilderIncomplete("command reciever"))?,
       command_transmitters: self
         .command_transmitters

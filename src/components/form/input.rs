@@ -10,14 +10,14 @@ use crate::components::style::default_action_block_style;
 #[derive(Default)]
 pub struct Input {
   label: String,
-  value: i64,
+  value: f64,
   is_active: bool,
   has_error: bool,
 }
 impl Input {
-  pub fn new(initial_value: Option<i64>, label: Option<String>) -> Self {
+  pub fn new(initial_value: Option<f64>, label: Option<String>) -> Self {
     Self {
-      value: initial_value.unwrap_or(0),
+      value: initial_value.unwrap_or(0f64),
       label: label.unwrap_or("".to_string()),
       is_active: false,
       has_error: false,
@@ -66,11 +66,14 @@ impl Input {
   pub fn set_error(&mut self) {
     self.has_error = true;
   }
-  pub fn set_value(&mut self, value: i64) {
+  pub fn value(&self) -> f64 {
+    self.value
+  }
+  pub fn set_value(&mut self, value: f64) {
     self.validate(value);
     self.value = value;
   }
-  fn validate(&mut self, value: i64) {
+  fn validate(&mut self, value: f64) {
     // TODO
   }
 }
