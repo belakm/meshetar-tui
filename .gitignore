@@ -5,6 +5,7 @@
 database.sqlite
 database.sqlite-journal
 summary.html
+/models/generated/*
 /models/neural_net_model/*
 /models/neural_net_model
 /models/cutoffs.pickle

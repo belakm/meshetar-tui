@@ -11,13 +11,13 @@ import os
 # while not os.path.basename(os.getcwd()) == 'meshetar':
 #    os.chdir('..')  # Move up one directory
 
-def run(candle_time=None, pair="BTCUSDT"):
+def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     # Comment out the warning silencers below when developing:
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
     warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
     # Load the saved model
-    loaded_model = tf.keras.models.load_model("./models/neural_net_model")  # Specify the path to your saved model directory or .h5 file
+    loaded_model = tf.keras.models.load_model("./models/generated/" + model_name)  # Specify the path to your saved model directory or .h5 file
     
     conn = sqlite3.connect('./database.sqlite')
     # cursor = sqliteConnection.cursor()
