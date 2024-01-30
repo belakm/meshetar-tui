@@ -10,6 +10,7 @@ use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub mod home;
+pub mod model_config;
 pub mod models;
 pub mod report;
 pub mod run_config;
@@ -20,6 +21,7 @@ pub mod sessions;
 pub enum ScreenId {
   HOME,
   MODELS,
+  MODELCONFIG,
   REPORT,
   SESSIONS,
   RUNCONFIG,

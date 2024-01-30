@@ -1,15 +1,15 @@
 pub mod error;
-// pub mod routes;
 
 use self::error::StrategyError;
 use crate::{
   assets::{Candle, MarketEvent, MarketEventDetail, MarketMeta, Pair},
-  utils::remove_vec_items_from_start,
+  utils::{formatting::timestamp_to_dt, remove_vec_items_from_start},
 };
 use chrono::{DateTime, Utc};
 use pyo3::{prelude::*, types::PyModule};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
+use tokio::fs;
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Signal {
@@ -190,4 +190,29 @@ fn run_backtest(
     Ok(parsed_signals)
   });
   Ok(result?)
+}
+
+pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
+  let file_name = Utc::now().timestamp_millis().to_string() + " " + &pair.to_string();
+  let file_path = format!("../../models/generated/{}", file_name.clone());
+  match fs::create_dir(file_path.clone()).await {
+    Ok(_) => {
+      let result: PyResult<()> = Python::with_gil(|py| {
+        let pyscript = include_str!("../../models/create_model.py");
+        let args = (pair.to_string(), file_name);
+        let activators =
+          PyModule::from_code(py, pyscript, "activators.py", "activators")?;
+        activators.getattr("new_model")?.call1(args)?;
+        Ok(())
+      });
+      match result {
+        Ok(_) => match fs::File::create(format!("{file_path}/done")).await {
+          Ok(_) => Ok(()),
+          Err(e) => Err(StrategyError::FileError(e.to_string())),
+        },
+        Err(e) => Err(StrategyError::from(e)),
+      }
+    },
+    Err(e) => Err(StrategyError::FileError(e.to_string())),
+  }
 }

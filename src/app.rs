@@ -32,6 +32,7 @@ use crate::{
   },
   screens::{
     home::Home,
+    model_config::ModelConfig,
     models::Models,
     report::Report,
     run_config::{CoreConfiguration, RunConfig},
@@ -40,7 +41,7 @@ use crate::{
     Screen, ScreenId,
   },
   statistic::StatisticConfig,
-  strategy::Strategy,
+  strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
   tui::{self, Tui},
   utils::binance_client::{BinanceClient, BinanceClientError},
@@ -205,6 +206,7 @@ impl App {
       ScreenId::HOME => Box::new(Home::default()),
       ScreenId::SESSIONS => Box::new(Sessions::default()),
       ScreenId::MODELS => Box::new(Models::default()),
+      ScreenId::MODELCONFIG => Box::new(ModelConfig::default()),
       ScreenId::REPORT => Box::new(Report::default()),
       ScreenId::RUNNING => {
         let mut running = Running::new(self.database.clone(), Pair::BTCUSDT);
@@ -273,8 +275,13 @@ impl App {
         }
       }
       while let Ok(action) = self.action_rx.try_recv() {
-        log::debug!("{action:?}");
         let action_clone = action.clone();
+        let action_clone_log = action.clone();
+
+        if action_clone_log != Action::Tick && action_clone_log != Action::Render {
+          log::info!("{action:?}");
+        }
+
         match action {
           Action::Tick => {},
           Action::Quit => self.should_quit = true,
@@ -318,6 +325,19 @@ impl App {
             CoreMessage::Finished => {
               self.navigate(ScreenId::REPORT)?;
             },
+          },
+          Action::GenerateModel(pair) => {
+            log::warn!("Starting new model generation");
+            tokio::spawn(async move {
+              match generate_new_model(pair).await {
+                Ok(_) => {
+                  log::warn!("New model created.");
+                },
+                Err(e) => {
+                  log::error!("Error on new model creation. {}", e);
+                },
+              }
+            });
           },
           _ => {},
         }

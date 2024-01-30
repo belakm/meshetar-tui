@@ -7,6 +7,7 @@ use serde::{
 };
 
 use crate::{
+  assets::Pair,
   core::{Command, CoreMessage},
   screens::ScreenId,
 };
@@ -28,6 +29,7 @@ pub enum Action {
   Accept,
   CoreCommand(Command),
   CoreMessage(CoreMessage),
+  GenerateModel(Pair),
 }
 
 impl<'de> Deserialize<'de> for Action {

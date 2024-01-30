@@ -91,7 +91,7 @@ impl Screen for Running {
       .direction(Direction::Horizontal)
       .constraints(vec![
         Constraint::Percentage(40),
-        Constraint::Percentage(30),
+        Constraint::Percentage(20),
         Constraint::Percentage(40),
       ])
       .split(content_layout[2]);

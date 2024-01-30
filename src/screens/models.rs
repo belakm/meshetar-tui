@@ -1,7 +1,9 @@
 use super::{Screen, ScreenId};
 use crate::{
-  action::Action,
-  components::style::{button, default_layout, logo, outer_container_block, stylized_block},
+  action::{Action, MoveDirection},
+  components::style::{
+    button, default_layout, logo, outer_container_block, stylized_block,
+  },
   config::{Config, KeyBindings},
 };
 use color_eyre::eyre::Result;
@@ -15,6 +17,7 @@ use tokio::sync::mpsc::UnboundedSender;
 pub struct Models {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
+  selected_action: usize,
 }
 
 impl Models {
@@ -39,8 +42,22 @@ impl Screen for Models {
       Action::Tick => {},
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
-          command_tx.send(Action::Navigate(ScreenId::HOME))?;
+          let screen = if self.selected_action == 0 {
+            ScreenId::HOME
+          } else {
+            ScreenId::MODELCONFIG
+          };
+          command_tx.send(Action::Navigate(screen))?;
         }
+      },
+      Action::Move(direction) => match direction {
+        MoveDirection::Left => {
+          self.selected_action = 0;
+        },
+        MoveDirection::Right => {
+          self.selected_action = 1;
+        },
+        _ => {},
       },
       _ => {},
     }
@@ -52,14 +69,23 @@ impl Screen for Models {
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
     let (header_area, content_area) = default_layout(inner_area);
     f.render_widget(logo(), header_area);
-    let content_layout =
-      Layout::default().constraints(vec![Constraint::Min(0), Constraint::Length(3)]).split(content_area);
+    let content_layout = Layout::default()
+      .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
+      .split(content_area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
-      .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(30), Constraint::Percentage(40)])
+      .constraints(vec![
+        Constraint::Percentage(20),
+        Constraint::Percentage(30),
+        Constraint::Length(1),
+        Constraint::Percentage(30),
+        Constraint::Percentage(20),
+      ])
       .split(content_layout[1]);
 
-    f.render_widget(button("Back", true), button_layout[1]);
+    f.render_widget(button("Back", self.selected_action == 0), button_layout[1]);
+    f.render_widget(button("New model", self.selected_action == 1), button_layout[3]);
+
     Ok(())
   }
 }
