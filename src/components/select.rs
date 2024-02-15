@@ -51,7 +51,8 @@ where
     let layout = centered_rect(area.width - 4, self.items.len() as u16 + 2, area);
     f.render_widget(stylized_block(false), layout);
     let layout = layout.inner(&Margin { horizontal: 1, vertical: 1 });
-    let constraints: Vec<Constraint> = self.items.iter().map(|_| Constraint::Length(1)).collect();
+    let constraints: Vec<Constraint> =
+      self.items.iter().map(|_| Constraint::Length(1)).collect();
     let layout = Layout::default().constraints(constraints).split(layout);
     for (index, item) in self.items.iter().enumerate() {
       let mut paragraph = Paragraph::new(item.to_string()).alignment(Alignment::Center);

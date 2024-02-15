@@ -1,8 +1,13 @@
-pub struct List<T> {
+use super::Drawable;
+use color_eyre::eyre::Result;
+use ratatui::prelude::*;
+
+pub struct List<T: Drawable> {
   items: Vec<T>,
   selected: Option<usize>,
 }
-impl<T> List<T> {
+
+impl<T: Drawable> List<T> {
   fn add(&mut self, item: T) {
     self.items.push(item);
   }
@@ -47,9 +52,34 @@ impl<T> List<T> {
     self.selected = pos
   }
 
-  fn draw() {}
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+    let item_height = 3;
+    let n_drawable_items = area.height / item_height;
+    let start_index: u16 = self.selected.unwrap_or(0) as u16;
+    let end_index: u16 = (start_index + n_drawable_items - 1)
+      .max(self.items.len() as u16 - n_drawable_items + 1);
+    let constraints: Vec<Constraint> = self
+      .items
+      .iter()
+      .skip(n_drawable_items as usize)
+      .map(|_| Constraint::Length(2))
+      .collect();
+    let list_layout = Layout::new().constraints(constraints).split(area);
+
+    for (index, item) in self
+      .items
+      .iter_mut()
+      .skip(start_index as usize)
+      .take(n_drawable_items as usize)
+      .enumerate()
+    {
+      item.draw(f, list_layout[index])?;
+    }
+
+    Ok(())
+  }
 }
-impl<T> Default for List<T> {
+impl<T: Drawable> Default for List<T> {
   fn default() -> Self {
     List { items: Vec::new(), selected: None }
   }

@@ -192,16 +192,6 @@ fn run_backtest(
   Ok(result?)
 }
 
-#[pyclass]
-struct LoggingStdout;
-
-#[pymethods]
-impl LoggingStdout {
-  fn write(&self, data: &str) {
-    //println!("stdout from python: {:?}", data);
-  }
-}
-
 pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
   let file_name = Utc::now().timestamp_millis().to_string() + "_" + &pair.to_string();
   let file_path = format!("models/generated/{}", file_name.clone());
