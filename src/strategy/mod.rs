@@ -192,9 +192,19 @@ fn run_backtest(
   Ok(result?)
 }
 
+#[pyclass]
+struct LoggingStdout;
+
+#[pymethods]
+impl LoggingStdout {
+  fn write(&self, data: &str) {
+    //println!("stdout from python: {:?}", data);
+  }
+}
+
 pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
-  let file_name = Utc::now().timestamp_millis().to_string() + " " + &pair.to_string();
-  let file_path = format!("../../models/generated/{}", file_name.clone());
+  let file_name = Utc::now().timestamp_millis().to_string() + "_" + &pair.to_string();
+  let file_path = format!("models/generated/{}", file_name.clone());
   match fs::create_dir(file_path.clone()).await {
     Ok(_) => {
       let result: PyResult<()> = Python::with_gil(|py| {
@@ -213,6 +223,10 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
         Err(e) => Err(StrategyError::from(e)),
       }
     },
-    Err(e) => Err(StrategyError::FileError(e.to_string())),
+    Err(e) => Err(StrategyError::FileError(format!(
+      "Error on path: {:?} - {}",
+      file_path,
+      e.to_string()
+    ))),
   }
 }

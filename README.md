@@ -22,4 +22,9 @@ $ pip install pandas ta matplotlib scipy seaborn tensorflow scikit-learn
 ## Running
 
 Run with `cargo run` (hehe)
+
+## Logging
+
 Find out where data and config dirs are by running: `cargo run -- --version` or just `--version` on compiled program.
+
+Protip: use `tail -f ~/.local/share/meshetar-tui/meshetar-tui.log` to see logs in real time.

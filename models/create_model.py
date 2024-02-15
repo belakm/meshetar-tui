@@ -1,4 +1,6 @@
 #%%
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import pandas as pd
 import numpy as np
 from ta import add_all_ta_features
@@ -15,9 +17,15 @@ from sklearn.metrics import roc_curve, roc_auc_score, RocCurveDisplay, confusion
 from sklearn.model_selection import train_test_split
 import pickle
 import warnings
-import os
+import sys
+
+def suppress_output():
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
 
 def new_model(pair="BTCUSDT", model_name="neural_net_model"):
+    
+    suppress_output()
 
     pd.set_option('display.max_rows', 500)
     pd.set_option('display.max_columns', 50)
@@ -149,7 +157,7 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     #%%
     plt.plot(history.history["loss"])
     plt.plot(history.history["val_loss"])
-    plt.show()
+    # plt.show()
     #%%
     train_proba = model.predict(X_train)
     test_proba = model.predict(X_test)
@@ -214,7 +222,8 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     # plt.show()
 
     # %%
-    model.save("./models/generated/" + model_name)
+    model_path = "./models/generated/" + model_name 
+    model.save(model_path)
     #
     # %%
     test_set_close = klines.loc[y_test.index, 'close']
@@ -230,12 +239,12 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     plt.title('Buy and Sell Predictions vs. Actual Close Prices')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    # plt.show()
 
     plt.plot( klines["close"])
     plt.plot(peaks, klines["close"][peaks], "x", color = "red")
     plt.plot(valleys, klines["close"][valleys], "+", color = "green")
-    plt.savefig('./static/historic_signals.svg', format='svg')
+    plt.savefig(model_path + '/historic_signals.svg', format='svg')
 
 
     # %%
