@@ -192,6 +192,20 @@ fn run_backtest(
   Ok(result?)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelMetadata {
+  created_at: String,
+  pair: Pair,
+  is_finished: bool,
+  error: String,
+}
+
+impl ModelMetadata {
+  pub fn new(created_at: String, pair: Pair, is_finished: bool, error: String) -> Self {
+    Self { created_at, pair, is_finished, error }
+  }
+}
+
 pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
   let file_name = Utc::now().timestamp_millis().to_string() + "_" + &pair.to_string();
   let file_path = format!("models/generated/{}", file_name.clone());

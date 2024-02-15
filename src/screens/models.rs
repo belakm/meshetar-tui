@@ -1,28 +1,39 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::{Action, MoveDirection},
+  assets::Pair,
   components::style::{
     button, default_layout, logo, outer_container_block, stylized_block,
   },
   config::{Config, KeyBindings},
+  strategy::ModelMetadata,
 };
+use chrono::{DateTime, Duration, Utc};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, str::FromStr};
 use tokio::sync::mpsc::UnboundedSender;
+
+const SYNC_DURATION: Duration = Duration::milliseconds(500);
 
 #[derive(Default)]
 pub struct Models {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   selected_action: usize,
+  last_sync: DateTime<Utc>,
 }
 
 impl Models {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  fn sync_with_fs(&mut self) -> Result<()> {
+    if self.last_sync + SYNC_DURATION < Utc::now() {}
+    Ok(())
   }
 }
 
@@ -88,4 +99,25 @@ impl Screen for Models {
 
     Ok(())
   }
+}
+
+fn parse_toml_metadata(contents: &str) -> Result<ModelMetadata> {
+  let value = contents.parse::<toml::Value>()?;
+  let created_at =
+    value.get("created").and_then(toml::Value::as_str).unwrap_or_default().to_string();
+  let error =
+    value.get("error").and_then(toml::Value::as_str).unwrap_or_default().to_string();
+  let pair: Pair = value
+    .get("created")
+    .and_then(toml::Value::as_str)
+    .unwrap_or_default()
+    .to_string()
+    .parse()?;
+  let is_finished: bool = value
+    .get("created")
+    .and_then(toml::Value::as_str)
+    .unwrap_or_default()
+    .to_string()
+    .parse()?;
+  Ok(ModelMetadata::new(created_at, pair, is_finished, error))
 }

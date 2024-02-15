@@ -19,7 +19,7 @@ use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::sync::Arc;
-use strum::Display;
+use strum::{Display, EnumString};
 use tokio::sync::{mpsc, Mutex};
 use tracing::info;
 
@@ -35,6 +35,7 @@ use tracing::info;
   Serialize,
   Deserialize,
   PartialOrd,
+  EnumString,
 )]
 pub enum Pair {
   #[default]
