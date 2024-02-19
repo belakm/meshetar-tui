@@ -102,7 +102,8 @@ impl Core {
 
     // File to print out the statistics
     if let Ok(mut out) = File::create("summary.html") {
-      let css_content = std::fs::read_to_string("summary.css").unwrap();
+      let css_content = std::fs::read_to_string("summary.css")
+        .map_err(|e| CoreError::ReportError(e.to_string()))?;
       writeln!(out, "<style>{}</style>", css_content).unwrap();
       let (overall_stats_tables, exited_trades_table) =
         self.generate_session_summary().await?;

@@ -1,71 +1,76 @@
-use super::Drawable;
+use std::ops::Add;
+
+use crate::strategy::ModelMetadata;
+
+use super::ListDisplay;
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 
-pub struct List<T: Drawable> {
+pub struct List<T: ListDisplay> {
   items: Vec<T>,
   selected: Option<usize>,
 }
 
-impl<T: Drawable> List<T> {
-  fn add(&mut self, item: T) {
+impl<T: ListDisplay> List<T> {
+  pub fn add(&mut self, item: T) {
     self.items.push(item);
   }
 
-  fn next(&mut self) {
-    let i = match self.selected {
-      Some(i) => {
-        if i >= self.items.len() - 1 {
-          None
-        } else {
-          Some(i + 1)
-        }
-      },
-      None => Some(0),
-    };
-    self.select(i);
+  pub fn next(&mut self) {
+    self.select(Some(
+      self
+        .selected
+        .unwrap_or(0)
+        .saturating_add(1)
+        .clamp(0, self.items.len().saturating_sub(1)),
+    ));
   }
 
-  fn previous(&mut self) {
-    let i = match self.selected {
-      Some(i) => {
-        if i == 0 {
-          None
-        } else {
-          Some(i - 1)
-        }
-      },
-      None => None,
-    };
-    self.select(i);
+  pub fn previous(&mut self) {
+    self.select(Some(self.selected.unwrap_or(0).saturating_sub(1)));
   }
 
-  fn update_items(&mut self, items: Vec<T>) {
+  pub fn update_items(&mut self, items: Vec<T>) {
     self.items = items
   }
 
-  fn unselect(&mut self) {
+  pub fn unselect(&mut self) {
     self.select(None);
   }
 
-  fn select(&mut self, pos: Option<usize>) {
+  pub fn select(&mut self, pos: Option<usize>) {
     self.selected = pos
   }
 
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let item_height = 3;
-    let n_drawable_items = area.height / item_height;
-    let start_index: u16 = self.selected.unwrap_or(0) as u16;
-    let end_index: u16 = (start_index + n_drawable_items - 1)
-      .max(self.items.len() as u16 - n_drawable_items + 1);
-    let constraints: Vec<Constraint> = self
-      .items
-      .iter()
-      .skip(n_drawable_items as usize)
-      .map(|_| Constraint::Length(2))
-      .collect();
-    let list_layout = Layout::new().constraints(constraints).split(area);
-
+  pub fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+    let layout = Layout::default()
+      .constraints(vec![Constraint::Length(2), Constraint::Min(0)])
+      .split(area);
+    ModelMetadata::default().draw_header(f, layout[0])?;
+    let item_height = 2;
+    // Sub one item to all displayed for headers
+    let n_drawable_items = (area.height / item_height) - 1u16;
+    let (start_index, end_index) = {
+      if n_drawable_items >= self.items.len() as u16 {
+        (0u16, (self.items.len().saturating_sub(1)) as u16)
+      } else {
+        (
+          self
+            .selected
+            .unwrap_or(0)
+            .clamp(0, self.items.len().saturating_sub(n_drawable_items as usize))
+            as u16,
+          self
+            .selected
+            .unwrap_or(0)
+            .saturating_add(n_drawable_items as usize)
+            .clamp(0, self.items.len().saturating_sub(1)) as u16,
+        )
+      }
+    };
+    let constraints: Vec<Constraint> =
+      vec![Constraint::Length(2); n_drawable_items as usize];
+    let list_layout = Layout::new().constraints(constraints).split(layout[1]);
     for (index, item) in self
       .items
       .iter_mut()
@@ -73,14 +78,16 @@ impl<T: Drawable> List<T> {
       .take(n_drawable_items as usize)
       .enumerate()
     {
-      item.draw(f, list_layout[index])?;
+      let is_active =
+        self.selected.unwrap_or(0).eq(&index.saturating_add(start_index.into()));
+      item.draw(f, list_layout[index], is_active)?;
     }
 
     Ok(())
   }
 }
-impl<T: Drawable> Default for List<T> {
+impl<T: ListDisplay> Default for List<T> {
   fn default() -> Self {
-    List { items: Vec::new(), selected: None }
+    List { items: Vec::new(), selected: Some(0) }
   }
 }

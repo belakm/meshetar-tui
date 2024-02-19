@@ -33,3 +33,21 @@ pub fn readable_duration(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
   let minutes = duration.num_minutes() % 60;
   format!("{}d {}h {}m", days, hours, minutes)
 }
+
+pub fn time_ago(input_time: DateTime<Utc>) -> String {
+  let now = Utc::now();
+  let duration = now.signed_duration_since(input_time);
+  if duration.num_seconds() < 60 {
+    "Just now".to_string()
+  } else if duration.num_minutes() < 60 {
+    format!("{}m ago", duration.num_minutes())
+  } else if duration.num_hours() < 24 {
+    format!("{}h ago", duration.num_hours())
+  } else if duration.num_days() == 1 {
+    "1 day ago".to_string()
+  } else if duration.num_weeks() == 1 {
+    "1 week ago".to_string()
+  } else {
+    format!("{} days ago", duration.num_days())
+  }
+}

@@ -3,10 +3,22 @@ pub mod error;
 use self::error::StrategyError;
 use crate::{
   assets::{Candle, MarketEvent, MarketEventDetail, MarketMeta, Pair},
-  utils::{formatting::timestamp_to_dt, remove_vec_items_from_start},
+  components::{
+    style::{default_style, DEFAULT_THEME},
+    ListDisplay,
+  },
+  utils::{
+    formatting::{time_ago, timestamp_to_dt},
+    remove_vec_items_from_start,
+  },
 };
 use chrono::{DateTime, Utc};
+use futures::TryFutureExt;
 use pyo3::{prelude::*, types::PyModule};
+use ratatui::{
+  prelude::{Constraint, Direction, Layout},
+  widgets::{Block, Paragraph},
+};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 use tokio::fs;
@@ -192,25 +204,119 @@ fn run_backtest(
   Ok(result?)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ModelMetadata {
-  created_at: String,
+  pub created_at: DateTime<Utc>,
   pair: Pair,
   is_finished: bool,
   error: String,
 }
 
 impl ModelMetadata {
-  pub fn new(created_at: String, pair: Pair, is_finished: bool, error: String) -> Self {
+  pub fn new(
+    created_at: DateTime<Utc>,
+    pair: Pair,
+    is_finished: bool,
+    error: String,
+  ) -> Self {
     Self { created_at, pair, is_finished, error }
+  }
+}
+
+impl ListDisplay for ModelMetadata {
+  fn draw(
+    &mut self,
+    f: &mut ratatui::Frame<'_>,
+    area: ratatui::prelude::Rect,
+    active: bool,
+  ) -> color_eyre::eyre::Result<()> {
+    f.render_widget(Block::default().style(default_style(active)), area.clone());
+    let row_layout = Layout::default()
+      .direction(Direction::Horizontal)
+      .constraints(vec![
+        Constraint::Max(10),
+        Constraint::Length(8),
+        Constraint::Min(0),
+        Constraint::Length(8),
+      ])
+      .split(area);
+
+    let status = match self.is_finished {
+      true => {
+        if self.error.len() == 0 {
+          "🟢 OK"
+        } else {
+          "🟥 ERR"
+        }
+      },
+      false => "🔵 WORK",
+    };
+
+    let has_error = self.error != "";
+    let msg = if !self.is_finished {
+      "Generating".to_string()
+    } else if has_error {
+      self.error.clone()
+    } else {
+      "Ready".to_string()
+    };
+    let error_style = if has_error {
+      default_style(active).fg(DEFAULT_THEME.text_critical)
+    } else {
+      default_style(active).fg(DEFAULT_THEME.text_dimmed)
+    };
+
+    f.render_widget(Paragraph::new(status), row_layout[0]);
+    f.render_widget(Paragraph::new(self.pair.to_string()), row_layout[1]);
+    f.render_widget(Paragraph::new(msg).style(error_style), row_layout[2]);
+    f.render_widget(Paragraph::new(time_ago(self.created_at)), row_layout[3]);
+
+    Ok(())
+  }
+  fn draw_header(
+    &mut self,
+    f: &mut ratatui::Frame<'_>,
+    area: ratatui::prelude::Rect,
+  ) -> color_eyre::eyre::Result<()> {
+    f.render_widget(Block::default().style(default_style(false)), area.clone());
+    let row_layout = Layout::default()
+      .direction(Direction::Horizontal)
+      .constraints(vec![
+        Constraint::Max(10),
+        Constraint::Length(8),
+        Constraint::Min(0),
+        Constraint::Length(8),
+      ])
+      .split(area);
+    f.render_widget(Paragraph::new(""), row_layout[0]);
+    f.render_widget(Paragraph::new("Pair"), row_layout[1]);
+    f.render_widget(Paragraph::new("Status"), row_layout[2]);
+    f.render_widget(Paragraph::new("Created"), row_layout[3]);
+    Ok(())
   }
 }
 
 pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
   let file_name = Utc::now().timestamp_millis().to_string() + "_" + &pair.to_string();
   let file_path = format!("models/generated/{}", file_name.clone());
+  let created_at = Utc::now();
   match fs::create_dir(file_path.clone()).await {
     Ok(_) => {
+      fs::File::create(format!("{file_path}/meta.toml"))
+        .await
+        .map_err(|e| StrategyError::FileError(e.to_string()))?;
+      fs::write(
+        format!("{file_path}/meta.toml"),
+        toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
+          created_at.clone(),
+          pair.clone(),
+          false,
+          "".to_string(),
+        ))
+        .map_err(|e| StrategyError::FileError(e.to_string()))?,
+      )
+      .map_err(|e| StrategyError::FileError(e.to_string()))
+      .await?;
       let result: PyResult<()> = Python::with_gil(|py| {
         let pyscript = include_str!("../../models/create_model.py");
         let args = (pair.to_string(), file_name);
@@ -220,11 +326,36 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
         Ok(())
       });
       match result {
-        Ok(_) => match fs::File::create(format!("{file_path}/done")).await {
-          Ok(_) => Ok(()),
-          Err(e) => Err(StrategyError::FileError(e.to_string())),
+        Ok(_) => {
+          fs::write(
+            format!("{file_path}/meta.toml"),
+            toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
+              created_at.clone(),
+              pair.clone(),
+              true,
+              "".to_string(),
+            ))
+            .map_err(|e| StrategyError::FileError(e.to_string()))?,
+          )
+          .map_err(|e| StrategyError::FileError(e.to_string()))
+          .await?;
+          Ok(())
         },
-        Err(e) => Err(StrategyError::from(e)),
+        Err(e) => {
+          fs::write(
+            format!("{file_path}/meta.toml"),
+            toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
+              created_at.clone(),
+              pair.clone(),
+              true,
+              format!("Error: {:?}", e.to_string()),
+            ))
+            .map_err(|e| StrategyError::FileError(e.to_string()))?,
+          )
+          .map_err(|e| StrategyError::FileError(e.to_string()))
+          .await?;
+          Err(StrategyError::from(e))
+        },
       }
     },
     Err(e) => Err(StrategyError::FileError(format!(

@@ -5,21 +5,23 @@ use ratatui::{
 };
 
 pub struct Theme {
-  bg: Color,
-  bg_button: Color,
-  bg_button_selected: Color,
-  bg_action_field: Color,
-  bg_action_field_active: Color,
-  bg_action_field_error: Color,
-  border: Color,
-  border_active: Color,
-  text: Color,
-  text_selected: Color,
-  text_button: Color,
-  text_button_selected: Color,
+  pub bg: Color,
+  pub bg_button: Color,
+  pub bg_button_selected: Color,
+  pub bg_action_field: Color,
+  pub bg_action_field_active: Color,
+  pub bg_action_field_error: Color,
+  pub border: Color,
+  pub border_active: Color,
+  pub text: Color,
+  pub text_dimmed: Color,
+  pub text_critical: Color,
+  pub text_selected: Color,
+  pub text_button: Color,
+  pub text_button_selected: Color,
 }
 
-static DEFAULT_THEME: Theme = Theme {
+pub static DEFAULT_THEME: Theme = Theme {
   bg: Color::Indexed(234),
   bg_button: Color::Indexed(236),
   bg_button_selected: Color::Indexed(178),
@@ -28,7 +30,9 @@ static DEFAULT_THEME: Theme = Theme {
   bg_action_field_error: Color::Indexed(52),
   border: Color::Indexed(250),
   border_active: Color::Green,
+  text_dimmed: Color::Indexed(240),
   text: Color::Indexed(252),
+  text_critical: Color::Red,
   text_selected: Color::White,
   text_button: Color::Indexed(252),
   text_button_selected: Color::Black,

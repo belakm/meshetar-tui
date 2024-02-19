@@ -7,6 +7,7 @@ pub mod style;
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 
-pub trait Drawable {
-  fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
+pub trait ListDisplay {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, active: bool) -> Result<()>;
+  fn draw_header(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()>;
 }
