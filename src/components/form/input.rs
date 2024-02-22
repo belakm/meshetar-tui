@@ -27,8 +27,12 @@ impl Input {
     // Render container
     let input_area = Layout::new()
       .constraints(vec![Constraint::Length(1), Constraint::Length(2), Constraint::Min(0)])
-      .split(area);
+      .split(area.clone());
 
+    f.render_widget(
+      Block::new().style(default_action_block_style(self.is_active, self.has_error)),
+      input_area[0],
+    );
     f.render_widget(
       Block::new().style(default_action_block_style(self.is_active, self.has_error)),
       input_area[1],
@@ -44,20 +48,13 @@ impl Input {
 
     // Label
     f.render_widget(
-      Paragraph::new(self.label.to_string()).block(
-        Block::new().style(default_action_block_style(self.is_active, self.has_error)),
-      ),
-      input_area[0],
+      Paragraph::new(self.label.to_string()),
+      input_area[0].inner(&Margin { horizontal: 1, vertical: 0 }),
     );
 
     let value_area = input_area[1].inner(&Margin { horizontal: 2, vertical: 0 });
     // Value
-    f.render_widget(
-      Paragraph::new(self.value.to_string()).block(
-        Block::new().style(default_action_block_style(self.is_active, self.has_error)),
-      ),
-      value_area,
-    );
+    f.render_widget(Paragraph::new(self.value.to_string()), value_area);
     Ok(())
   }
   pub fn set_active(&mut self, val: bool) {

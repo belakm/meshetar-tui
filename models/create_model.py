@@ -1,5 +1,6 @@
 #%%
 import os
+# THIS MUTES TENSORFLOW 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import pandas as pd
 import numpy as np
@@ -33,7 +34,7 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     #    os.chdir('..')  # Move up one directory
 
     warnings.filterwarnings("ignore", category=RuntimeWarning)
-
+    model_path = "./models/generated/" + model_name 
 
     # %%
     #import os
@@ -189,7 +190,7 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     cutoffs[0] = cutoffs[0] + 0.02
     cutoffs[2] = cutoffs[2] + 0.02
 
-    with open('./models/cutoffs.pickle', 'wb') as handle:
+    with open(model_path + '/cutoffs.pickle', 'wb') as handle:
         pickle.dump(cutoffs, handle, protocol=-1)
     print(test_proba)
     print(cutoffs)
@@ -222,7 +223,6 @@ def new_model(pair="BTCUSDT", model_name="neural_net_model"):
     # plt.show()
 
     # %%
-    model_path = "./models/generated/" + model_name 
     model.save(model_path)
     #
     # %%

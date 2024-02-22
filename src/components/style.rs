@@ -1,3 +1,5 @@
+use std::u8;
+
 use ratatui::{
   prelude::{Alignment, Constraint, Direction, Layout, Rect},
   style::{Color, Modifier, Style},
@@ -19,23 +21,25 @@ pub struct Theme {
   pub text_selected: Color,
   pub text_button: Color,
   pub text_button_selected: Color,
+  pub brand: Color,
 }
 
 pub static DEFAULT_THEME: Theme = Theme {
-  bg: Color::Indexed(234),
-  bg_button: Color::Indexed(236),
-  bg_button_selected: Color::Indexed(178),
-  bg_action_field: Color::Indexed(236),
-  bg_action_field_active: Color::Indexed(233),
-  bg_action_field_error: Color::Indexed(52),
-  border: Color::Indexed(250),
-  border_active: Color::Green,
-  text_dimmed: Color::Indexed(240),
-  text: Color::Indexed(252),
-  text_critical: Color::Red,
-  text_selected: Color::White,
-  text_button: Color::Indexed(252),
-  text_button_selected: Color::Black,
+  bg: Color::Indexed(233),
+  bg_button: Color::Indexed(10),
+  bg_button_selected: Color::Indexed(34),
+  bg_action_field: Color::Indexed(234),
+  bg_action_field_active: Color::Indexed(236),
+  bg_action_field_error: Color::Indexed(13),
+  border: Color::Indexed(130),
+  border_active: Color::Indexed(130),
+  text_dimmed: Color::Indexed(7),
+  text: Color::Indexed(15),
+  text_critical: Color::Indexed(207),
+  text_selected: Color::Indexed(220),
+  text_button: Color::Indexed(0),
+  text_button_selected: Color::Indexed(16),
+  brand: Color::Indexed(220),
 };
 
 pub fn stylized_block<'a>(selected: bool) -> Block<'a> {
@@ -76,7 +80,7 @@ pub fn default_action_block_style(active: bool, error: bool) -> Style {
 }
 
 pub fn header_style() -> Style {
-  Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.bg_button_selected)
+  Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.brand)
 }
 
 pub fn stylized_button<'a>(selected: bool) -> Block<'a> {

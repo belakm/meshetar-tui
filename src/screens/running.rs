@@ -95,6 +95,11 @@ impl Screen for Running {
         Constraint::Percentage(40),
       ])
       .split(content_layout[2]);
+
+    // Balance
+    // Trades
+    // Change
+
     f.render_widget(Paragraph::new("Running :)"), content_layout[0]);
     if let Some(Ok(stats)) = stats {
       f.render_widget(

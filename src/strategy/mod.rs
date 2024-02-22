@@ -13,10 +13,12 @@ use crate::{
   },
 };
 use chrono::{DateTime, Utc};
+use color_eyre::owo_colors::OwoColorize;
 use futures::TryFutureExt;
 use pyo3::{prelude::*, types::PyModule};
 use ratatui::{
   prelude::{Constraint, Direction, Layout},
+  style::Style,
   widgets::{Block, Paragraph},
 };
 use serde::{Deserialize, Serialize};
@@ -129,6 +131,7 @@ impl Strategy {
     let pyscript = include_str!("../../models/backtest.py");
     let args = (open_time.to_rfc3339(), asset.to_string());
     let model_output = run_backtest(pyscript, args)?;
+    log::info!("OUTPUT: {:?}", model_output);
     let candles_that_were_analyzed = remove_vec_items_from_start(candles, 0);
     let mut candles_with_signals: Vec<(Candle, HashMap<Decision, SignalStrength>)> =
       Vec::new();
@@ -190,6 +193,7 @@ fn run_backtest(
   script: &str,
   args: (String, String),
 ) -> PyResult<Vec<(String, DateTime<Utc>)>> {
+  log::info!("{:?}", args);
   let result: PyResult<Vec<_>> = Python::with_gil(|py| {
     let activators = PyModule::from_code(py, script, "activators.py", "activators")?;
     let signals: Vec<(String, String)> =
@@ -246,7 +250,7 @@ impl ListDisplay for ModelMetadata {
         if self.error.len() == 0 {
           "🟢 OK"
         } else {
-          "🟥 ERR"
+          "🟪 ERR"
         }
       },
       false => "🔵 WORK",
@@ -279,6 +283,7 @@ impl ListDisplay for ModelMetadata {
     area: ratatui::prelude::Rect,
   ) -> color_eyre::eyre::Result<()> {
     f.render_widget(Block::default().style(default_style(false)), area.clone());
+    let header_style = Style::default().fg(DEFAULT_THEME.text_dimmed);
     let row_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![
@@ -289,9 +294,9 @@ impl ListDisplay for ModelMetadata {
       ])
       .split(area);
     f.render_widget(Paragraph::new(""), row_layout[0]);
-    f.render_widget(Paragraph::new("Pair"), row_layout[1]);
-    f.render_widget(Paragraph::new("Status"), row_layout[2]);
-    f.render_widget(Paragraph::new("Created"), row_layout[3]);
+    f.render_widget(Paragraph::new("Pair").style(header_style), row_layout[1]);
+    f.render_widget(Paragraph::new("Status").style(header_style), row_layout[2]);
+    f.render_widget(Paragraph::new("Created").style(header_style), row_layout[3]);
     Ok(())
   }
 }

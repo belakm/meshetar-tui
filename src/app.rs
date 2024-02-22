@@ -1,6 +1,6 @@
 const IS_LIVE: bool = false;
 const BACKTEST_LAST_N_CANDLES: usize = 1440;
-const FETCH_N_DAYS_HISTORY: i64 = 5;
+const FETCH_N_DAYS_HISTORY: i64 = 0;
 const STARTING_EQUITY: f64 = 1000.0;
 const EXCHANGE_FEE: f64 = 0.0;
 const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
@@ -146,6 +146,7 @@ impl App {
 
     self.core_command_tx = Some(core_command_tx);
 
+    // This forwards messages from Core to App
     let action_tx_clone = self.action_tx.clone();
     tokio::spawn(async move {
       while let Ok(msg) = core_message_rx.try_recv() {
@@ -153,8 +154,11 @@ impl App {
       }
     });
 
+    // This starts the Core and sends message when it ends
+    let action_tx = self.action_tx.clone();
     tokio::spawn(async move {
       let _ = core.run().await;
+      let _ = action_tx.send(Action::CoreMessage(CoreMessage::Finished));
     });
 
     Ok(())
@@ -313,7 +317,7 @@ impl App {
           },
           Action::CoreCommand(command) => match command {
             Command::Start(core_configuration) => {
-              self.new_run(core_configuration).await?
+              let _ = self.new_run(core_configuration).await;
             },
             _ => {
               if let Some(tx) = &self.core_command_tx {
