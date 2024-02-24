@@ -6,12 +6,12 @@ use super::ListDisplay;
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 
-pub struct List<T: ListDisplay> {
+pub struct List<T: ListDisplay + Clone> {
   items: Vec<T>,
   selected: Option<usize>,
 }
 
-impl<T: ListDisplay> List<T> {
+impl<T: ListDisplay + Clone> List<T> {
   pub fn add(&mut self, item: T) {
     self.items.push(item);
   }
@@ -31,7 +31,7 @@ impl<T: ListDisplay> List<T> {
   }
 
   pub fn update_items(&mut self, items: Vec<T>) {
-    self.items = items
+    self.items = items.clone()
   }
 
   pub fn unselect(&mut self) {
@@ -42,14 +42,22 @@ impl<T: ListDisplay> List<T> {
     self.selected = pos
   }
 
+  pub fn get_selected(&self) -> Option<T> {
+    if let Some(selected) = self.selected {
+      Some(self.items[selected].clone())
+    } else {
+      None
+    }
+  }
+
   pub fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let layout = Layout::default()
       .constraints(vec![Constraint::Length(2), Constraint::Min(0)])
       .split(area);
-    ModelMetadata::default().draw_header(f, layout[0])?;
+    //T::draw_header(T f, layout[0])?;
     let item_height = 2;
     // Sub one item to all displayed for headers
-    let n_drawable_items = (area.height / item_height) - 1u16;
+    let n_drawable_items = (area.height / item_height).saturating_sub(1);
     let (start_index, end_index) = {
       if n_drawable_items >= self.items.len() as u16 {
         (0u16, (self.items.len().saturating_sub(1)) as u16)
@@ -70,7 +78,7 @@ impl<T: ListDisplay> List<T> {
     };
     let constraints: Vec<Constraint> =
       vec![Constraint::Length(2); n_drawable_items as usize];
-    let list_layout = Layout::new().constraints(constraints).split(layout[1]);
+    let list_layout = Layout::vertical(constraints).split(layout[1]);
     for (index, item) in self
       .items
       .iter_mut()
@@ -86,7 +94,7 @@ impl<T: ListDisplay> List<T> {
     Ok(())
   }
 }
-impl<T: ListDisplay> Default for List<T> {
+impl<T: ListDisplay + Clone> Default for List<T> {
   fn default() -> Self {
     List { items: Vec::new(), selected: Some(0) }
   }

@@ -113,7 +113,7 @@ impl App {
           self.database.clone(),
           core_configuration.backtest_last_n_candles,
         ))
-        .strategy(Strategy::new(DEFAULT_ASSET))
+        .strategy(Strategy::new(core_configuration.pair, core_configuration.model_id))
         .execution(Execution::new(core_configuration.exchange_fee))
         .build()?,
     );

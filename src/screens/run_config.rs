@@ -1,12 +1,14 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::{Action, MoveDirection},
+  assets::Pair,
   components::{
-    form::input::Input,
+    form::{input::Input, select::Select},
     style::{
       button, button_style, centered_text, default_action_block_style, default_header,
       default_layout, logo, outer_container_block, stylized_block,
     },
+    ListDisplay,
   },
   config::{Config, KeyBindings},
   core::Command,
@@ -15,9 +17,10 @@ use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
+use uuid::Uuid;
 
 #[derive(Default, Serialize, Clone, PartialEq, Debug)]
 pub struct CoreConfiguration {
@@ -26,16 +29,31 @@ pub struct CoreConfiguration {
   pub starting_equity: f64,
   pub backtest_last_n_candles: usize,
   pub exchange_fee: f64,
+  pub pair: Pair,
+  pub model_id: Uuid,
 }
 
 #[derive(Default, PartialEq, EnumIter, EnumCount, Clone)]
 enum SelectedField {
+  #[default]
+  Pair,
+  Model,
   StartingEquity,
   ExchangeFee,
   BacktestLastNCandles,
   FetchLastNDays,
-  #[default]
   Actions,
+}
+
+#[derive(Default, Clone)]
+pub struct ModelId {
+  pub name: String,
+  pub uuid: Uuid,
+}
+impl Display for ModelId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    Ok(())
+  }
 }
 
 #[derive(Default)]
@@ -44,16 +62,19 @@ pub struct RunConfig {
   config: Config,
   selected_field: SelectedField,
   selected_field_index: usize,
+  is_field_being_edited: bool,
   selected_action: usize,
   fetch_last_n_days: Input,
   backtest_last_n_candles: Input,
   starting_equity: Input,
   exchange_fee: Input,
+  model_id: Select<ModelId>,
+  pair: Select<Pair>,
 }
 
 impl RunConfig {
   pub fn new() -> Self {
-    Self {
+    let mut config = Self {
       fetch_last_n_days: Input::new(
         Some(0.0),
         Some("How many days of history to fetch".to_string()),
@@ -64,12 +85,25 @@ impl RunConfig {
       ),
       starting_equity: Input::new(Some(1000.0), Some("Starting equity".to_string())),
       exchange_fee: Input::new(Some(0.0), Some("Exchange fee".to_string())),
-      selected_field_index: 4,
+      pair: Select::new(
+        vec![Pair::BTCUSDT, Pair::ETHBTC],
+        Some(Pair::BTCUSDT),
+        Some("Pair".to_string()),
+      ),
+      model_id: Select::new(vec![], None, Some("Model".to_string())),
+      selected_field_index: 0,
+      selected_field: SelectedField::Pair,
       ..Self::default()
-    }
+    };
+    config.set_field_active(SelectedField::Pair);
+    config
   }
 
+  fn activate_field(&mut self, selected_field: SelectedField) {}
+
   fn set_field_active(&mut self, selected_field: SelectedField) {
+    self.model_id.set_active(selected_field == SelectedField::Model);
+    self.pair.set_active(selected_field == SelectedField::Pair);
     self.fetch_last_n_days.set_active(selected_field == SelectedField::FetchLastNDays);
     self
       .backtest_last_n_candles
@@ -101,23 +135,39 @@ impl Screen for RunConfig {
         },
         MoveDirection::Right => {
           if self.selected_field == SelectedField::Actions {
-            self.selected_action = 1.min(self.selected_action + 1);
+            self.selected_action = self.selected_action.saturating_add(1).min(2);
           }
         },
         MoveDirection::Down => {
-          self.selected_field_index =
-            (self.selected_field_index + 1) % SelectedField::COUNT;
-          self.selected_field = SelectedField::iter()
-            .nth(self.selected_field_index)
-            .unwrap_or(SelectedField::Actions);
-          self.set_field_active(self.selected_field.clone());
+          if self.is_field_being_edited {
+            match self.selected_field {
+              SelectedField::Pair => self.pair.edit_next(),
+              SelectedField::Model => self.model_id.edit_next(),
+              _ => (),
+            };
+          } else {
+            self.selected_field_index =
+              (self.selected_field_index + 1) % SelectedField::COUNT;
+            self.selected_field = SelectedField::iter()
+              .nth(self.selected_field_index)
+              .unwrap_or(SelectedField::Actions);
+            self.set_field_active(self.selected_field.clone());
+          }
         },
         MoveDirection::Up => {
-          self.selected_field_index = self.selected_field_index.saturating_sub(1);
-          self.selected_field = SelectedField::iter()
-            .nth(self.selected_field_index)
-            .unwrap_or(SelectedField::Actions);
-          self.set_field_active(self.selected_field.clone());
+          if self.is_field_being_edited {
+            match self.selected_field {
+              SelectedField::Pair => self.pair.edit_previous(),
+              SelectedField::Model => self.model_id.edit_previous(),
+              _ => (),
+            };
+          } else {
+            self.selected_field_index = self.selected_field_index.saturating_sub(1);
+            self.selected_field = SelectedField::iter()
+              .nth(self.selected_field_index)
+              .unwrap_or(SelectedField::Actions);
+            self.set_field_active(self.selected_field.clone());
+          }
         },
       },
       Action::Accept => {
@@ -125,19 +175,42 @@ impl Screen for RunConfig {
           if self.selected_field == SelectedField::Actions {
             let screen_id = if self.selected_action == 0 {
               ScreenId::BACKTEST
-            } else {
+            } else if self.selected_action == 1 {
               ScreenId::RUNNING
+            } else {
+              ScreenId::HOME
             };
-            command_tx.send(Action::CoreCommand(Command::Start(CoreConfiguration {
-              run_live: self.selected_action == 1,
-              n_days_to_fetch: self.fetch_last_n_days.value() as u64,
-              starting_equity: self.starting_equity.value(),
-              backtest_last_n_candles: self.backtest_last_n_candles.value() as usize,
-              exchange_fee: self.exchange_fee.value(),
-            })))?;
-            command_tx.send(Action::Navigate(screen_id))?;
+            let options = self.pair.value().zip(self.model_id.value());
+            if let Some((pair, model_id)) = options {
+              command_tx.send(Action::CoreCommand(Command::Start(
+                CoreConfiguration {
+                  run_live: self.selected_action == 1,
+                  n_days_to_fetch: self.fetch_last_n_days.value() as u64,
+                  starting_equity: self.starting_equity.value(),
+                  backtest_last_n_candles: self.backtest_last_n_candles.value() as usize,
+                  exchange_fee: self.exchange_fee.value(),
+                  model_id: model_id.uuid,
+                  pair,
+                },
+              )))?;
+              command_tx.send(Action::Navigate(screen_id))?;
+            } else if screen_id == ScreenId::HOME {
+              command_tx.send(Action::Navigate(screen_id))?;
+            }
           } else {
             // ACTIVATE INPUTS
+            let is_field_being_edited = match self.selected_field {
+              SelectedField::Pair => self.pair.toggle_edit(),
+              SelectedField::Model => self.model_id.toggle_edit(),
+              SelectedField::ExchangeFee => self.exchange_fee.toggle_edit(),
+              SelectedField::StartingEquity => self.starting_equity.toggle_edit(),
+              SelectedField::FetchLastNDays => self.fetch_last_n_days.toggle_edit(),
+              SelectedField::BacktestLastNCandles => {
+                self.backtest_last_n_candles.toggle_edit()
+              },
+              SelectedField::Actions => false,
+            };
+            self.is_field_being_edited = is_field_being_edited
           }
         }
       },
@@ -154,50 +227,65 @@ impl Screen for RunConfig {
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
       .split(content_area);
+
     let form_layout = Layout::default()
       .constraints(vec![
-        Constraint::Length(4),
-        Constraint::Length(4),
-        Constraint::Length(4),
-        Constraint::Length(4),
-        Constraint::Length(4),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Length(2),
         Constraint::Min(0),
       ])
       .split(content_layout[0]);
 
-    //
-    // Maybe later show some extra detail like how much days we have in database
-    //
+    // Pair
+    self.pair.draw(f, form_layout[0])?;
 
-    // Default Pair
-    f.render_widget(
-      Paragraph::new("USDT / BTC (fixed)")
-        .block(Block::new().style(default_action_block_style(false, false))),
-      form_layout[0],
-    );
+    // Model
+    self.model_id.draw(f, form_layout[1])?;
 
     // Starting Equity
-    self.starting_equity.draw(f, form_layout[1])?;
+    self.starting_equity.draw(f, form_layout[2])?;
 
     // Exchange Fee
-    self.exchange_fee.draw(f, form_layout[2])?;
+    self.exchange_fee.draw(f, form_layout[3])?;
 
     // Backtest Last N Candles
-    self.backtest_last_n_candles.draw(f, form_layout[3])?;
+    self.backtest_last_n_candles.draw(f, form_layout[4])?;
 
     // Last N days fetch
-    self.fetch_last_n_days.draw(f, form_layout[4])?;
+    self.fetch_last_n_days.draw(f, form_layout[5])?;
 
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![
-        Constraint::Percentage(20),
-        Constraint::Percentage(30),
+        Constraint::Percentage(9),
+        Constraint::Percentage(26),
         Constraint::Length(1),
-        Constraint::Percentage(30),
-        Constraint::Percentage(20),
+        Constraint::Percentage(26),
+        Constraint::Length(1),
+        Constraint::Percentage(26),
+        Constraint::Percentage(9),
       ])
       .split(content_layout[1]);
+
+    match self.selected_field {
+      SelectedField::Pair => self.pair.draw_edit(f, content_layout[0])?,
+      SelectedField::Model => self.model_id.draw_edit(f, content_layout[0])?,
+      SelectedField::StartingEquity => {
+        self.starting_equity.draw_edit(f, content_layout[0])?
+      },
+      SelectedField::ExchangeFee => self.exchange_fee.draw_edit(f, content_layout[0])?,
+      SelectedField::BacktestLastNCandles => {
+        self.backtest_last_n_candles.draw_edit(f, content_layout[0])?
+      },
+      SelectedField::FetchLastNDays => {
+        self.fetch_last_n_days.draw_edit(f, content_layout[0])?
+      },
+      SelectedField::Actions => (),
+    };
 
     f.render_widget(
       button(
@@ -212,6 +300,13 @@ impl Screen for RunConfig {
         self.selected_field == SelectedField::Actions && self.selected_action == 1,
       ),
       button_layout[3],
+    );
+    f.render_widget(
+      button(
+        "BACK",
+        self.selected_field == SelectedField::Actions && self.selected_action == 2,
+      ),
+      button_layout[5],
     );
 
     Ok(())

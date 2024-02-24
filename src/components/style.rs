@@ -128,7 +128,7 @@ pub fn outer_container_block<'a>() -> Block<'a> {
 }
 
 pub fn input_block<'a>(active: bool, error: bool) -> Block<'a> {
-  Block::new().borders(Borders::BOTTOM).style(default_action_block_style(active, error))
+  Block::new().style(default_action_block_style(active, error))
 }
 
 pub fn default_layout(area: Rect) -> (Rect, Rect) {

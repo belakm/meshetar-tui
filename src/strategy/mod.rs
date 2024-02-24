@@ -8,13 +8,14 @@ use crate::{
     ListDisplay,
   },
   utils::{
-    formatting::{time_ago, timestamp_to_dt},
+    formatting::{generate_petname, time_ago, timestamp_to_dt},
     remove_vec_items_from_start,
   },
 };
 use chrono::{DateTime, Utc};
 use color_eyre::owo_colors::OwoColorize;
 use futures::TryFutureExt;
+use petname::Petnames;
 use pyo3::{prelude::*, types::PyModule};
 use ratatui::{
   prelude::{Constraint, Direction, Layout},
@@ -24,6 +25,7 @@ use ratatui::{
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap};
 use tokio::fs;
+use uuid::Uuid;
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Signal {
@@ -88,10 +90,11 @@ pub struct SignalStrength(pub f64);
 
 pub struct Strategy {
   asset: Pair,
+  model_id: Uuid,
 }
 impl Strategy {
-  pub fn new(asset: Pair) -> Self {
-    Strategy { asset }
+  pub fn new(asset: Pair, model_id: Uuid) -> Self {
+    Strategy { asset, model_id }
   }
   pub async fn generate_signal(
     &mut self,
@@ -208,12 +211,13 @@ fn run_backtest(
   Ok(result?)
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct ModelMetadata {
   pub created_at: DateTime<Utc>,
   pair: Pair,
   is_finished: bool,
   error: String,
+  name: String,
 }
 
 impl ModelMetadata {
@@ -223,7 +227,7 @@ impl ModelMetadata {
     is_finished: bool,
     error: String,
   ) -> Self {
-    Self { created_at, pair, is_finished, error }
+    Self { created_at, pair, is_finished, error, name: generate_petname() }
   }
 }
 

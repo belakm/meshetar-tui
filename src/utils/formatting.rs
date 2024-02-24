@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Local, LocalResult, NaiveDateTime, TimeZone, Utc};
+use petname::Petnames;
 
 const DATETIME_FORMAT_SHAPE: &str = "%e. %b %H:%M";
 const DATETIME_FORMAT_SHAPE_SHORT: &str = "%H:%M:%S";
@@ -32,6 +33,10 @@ pub fn readable_duration(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
   let hours = duration.num_hours() % 24;
   let minutes = duration.num_minutes() % 60;
   format!("{}d {}h {}m", days, hours, minutes)
+}
+
+pub fn generate_petname() -> String {
+  Petnames::generate_one(&Petnames::small(), 0u8, "")
 }
 
 pub fn time_ago(input_time: DateTime<Utc>) -> String {
