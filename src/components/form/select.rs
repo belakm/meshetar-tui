@@ -15,26 +15,36 @@ use crate::{
     style::{default_action_block_style, input_block, stylized_block},
     ListDisplay,
   },
-  screens::run_config::ModelId,
+  strategy::ModelId,
 };
 
 impl ListDisplay for ModelId {
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect, active: bool) -> Result<()> {
-    let layout = Layout::default()
-      .direction(Direction::Horizontal)
-      .constraints(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
-      .split(area);
+    let layout =
+      Layout::horizontal(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(area);
     f.render_widget(
-      Paragraph::new(self.name.to_string()).block(input_block(active, false)),
+      Paragraph::new(self.pair.to_string()).block(input_block(active, false)),
       layout[0],
     );
     f.render_widget(
-      Paragraph::new(self.uuid.to_string()).block(input_block(active, false)),
+      Paragraph::new(self.name.clone()).block(input_block(active, false)),
       layout[1],
     );
     Ok(())
   }
   fn draw_header(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+    let layout =
+      Layout::horizontal(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(area);
+    f.render_widget(
+      Paragraph::new("Pair".to_string()).block(input_block(false, false)),
+      layout[0],
+    );
+    f.render_widget(
+      Paragraph::new("Pet name".to_string()).block(input_block(false, false)),
+      layout[1],
+    );
     Ok(())
   }
 }
@@ -53,7 +63,7 @@ impl ListDisplay for Pair {
 }
 
 #[derive(Default)]
-pub struct Select<T: Display + Clone + ListDisplay> {
+pub struct Select<T: Display + Clone + ListDisplay + Default> {
   label: String,
   value: Option<T>,
   options: Vec<T>,
@@ -63,7 +73,7 @@ pub struct Select<T: Display + Clone + ListDisplay> {
   edit_list: List<T>,
   edit_list_index: usize,
 }
-impl<T: Display + Clone + ListDisplay> Select<T> {
+impl<T: Display + Clone + ListDisplay + Default> Select<T> {
   pub fn new(options: Vec<T>, value: Option<T>, label: Option<String>) -> Self {
     let mut edit_list = List::default();
     edit_list.update_items(options.clone());
@@ -169,7 +179,12 @@ impl<T: Display + Clone + ListDisplay> Select<T> {
   pub fn edit_previous(&mut self) {
     self.edit_list.previous();
   }
-
+  pub fn set_options(&mut self, items: Vec<T>) {
+    self.edit_list.update_items(items);
+  }
+  fn has_no_options(&self) -> bool {
+    self.edit_list.is_empty()
+  }
   fn validate(&mut self, value: Option<T>) {
     // TODO
   }

@@ -23,9 +23,21 @@ use ratatui::{
   widgets::{Block, Paragraph},
 };
 use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap};
+use std::{cmp::Ordering, collections::HashMap, path::Path};
 use tokio::fs;
 use uuid::Uuid;
+
+#[derive(Default, Clone)]
+pub struct ModelId {
+  pub name: String,
+  pub uuid: Uuid,
+  pub pair: Pair,
+}
+impl std::fmt::Display for ModelId {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}-{}", self.name.clone(), self.pair.to_string())
+  }
+}
 
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Signal {
@@ -134,7 +146,6 @@ impl Strategy {
     let pyscript = include_str!("../../models/backtest.py");
     let args = (open_time.to_rfc3339(), asset.to_string());
     let model_output = run_backtest(pyscript, args)?;
-    log::info!("OUTPUT: {:?}", model_output);
     let candles_that_were_analyzed = remove_vec_items_from_start(candles, 0);
     let mut candles_with_signals: Vec<(Candle, HashMap<Decision, SignalStrength>)> =
       Vec::new();
@@ -196,7 +207,6 @@ fn run_backtest(
   script: &str,
   args: (String, String),
 ) -> PyResult<Vec<(String, DateTime<Utc>)>> {
-  log::info!("{:?}", args);
   let result: PyResult<Vec<_>> = Python::with_gil(|py| {
     let activators = PyModule::from_code(py, script, "activators.py", "activators")?;
     let signals: Vec<(String, String)> =
@@ -218,6 +228,7 @@ pub struct ModelMetadata {
   is_finished: bool,
   error: String,
   name: String,
+  uuid: Uuid,
 }
 
 impl ModelMetadata {
@@ -227,7 +238,18 @@ impl ModelMetadata {
     is_finished: bool,
     error: String,
   ) -> Self {
-    Self { created_at, pair, is_finished, error, name: generate_petname() }
+    Self {
+      created_at,
+      pair,
+      is_finished,
+      error,
+      name: generate_petname(),
+      uuid: Uuid::new_v4(),
+    }
+  }
+
+  pub fn to_model_id(&self) -> ModelId {
+    ModelId { name: self.name.clone(), uuid: self.uuid, pair: self.pair.clone() }
   }
 }
 
@@ -242,9 +264,10 @@ impl ListDisplay for ModelMetadata {
     let row_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![
-        Constraint::Max(10),
+        Constraint::Max(8),
         Constraint::Length(8),
         Constraint::Min(0),
+        Constraint::Length(20),
         Constraint::Length(8),
       ])
       .split(area);
@@ -277,7 +300,8 @@ impl ListDisplay for ModelMetadata {
     f.render_widget(Paragraph::new(status), row_layout[0]);
     f.render_widget(Paragraph::new(self.pair.to_string()), row_layout[1]);
     f.render_widget(Paragraph::new(msg).style(error_style), row_layout[2]);
-    f.render_widget(Paragraph::new(time_ago(self.created_at)), row_layout[3]);
+    f.render_widget(Paragraph::new(self.name.clone()), row_layout[3]);
+    f.render_widget(Paragraph::new(time_ago(self.created_at)), row_layout[4]);
 
     Ok(())
   }
@@ -291,24 +315,28 @@ impl ListDisplay for ModelMetadata {
     let row_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![
-        Constraint::Max(10),
+        Constraint::Max(8),
         Constraint::Length(8),
         Constraint::Min(0),
+        Constraint::Length(20),
         Constraint::Length(8),
       ])
       .split(area);
     f.render_widget(Paragraph::new(""), row_layout[0]);
     f.render_widget(Paragraph::new("Pair").style(header_style), row_layout[1]);
     f.render_widget(Paragraph::new("Status").style(header_style), row_layout[2]);
-    f.render_widget(Paragraph::new("Created").style(header_style), row_layout[3]);
+    f.render_widget(Paragraph::new("Pet name").style(header_style), row_layout[3]);
+    f.render_widget(Paragraph::new("Created").style(header_style), row_layout[4]);
     Ok(())
   }
 }
 
 pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
-  let file_name = Utc::now().timestamp_millis().to_string() + "_" + &pair.to_string();
-  let file_path = format!("models/generated/{}", file_name.clone());
   let created_at = Utc::now();
+  let model_metadata =
+    ModelMetadata::new(created_at.clone(), pair.clone(), false, "".to_string());
+  let file_name = model_metadata.name.clone();
+  let file_path = format!("models/generated/{}", file_name.clone());
   match fs::create_dir(file_path.clone()).await {
     Ok(_) => {
       fs::File::create(format!("{file_path}/meta.toml"))
@@ -316,13 +344,8 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
         .map_err(|e| StrategyError::FileError(e.to_string()))?;
       fs::write(
         format!("{file_path}/meta.toml"),
-        toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
-          created_at.clone(),
-          pair.clone(),
-          false,
-          "".to_string(),
-        ))
-        .map_err(|e| StrategyError::FileError(e.to_string()))?,
+        toml::to_string_pretty::<ModelMetadata>(&model_metadata)
+          .map_err(|e| StrategyError::FileError(e.to_string()))?,
       )
       .map_err(|e| StrategyError::FileError(e.to_string()))
       .await?;
@@ -338,13 +361,8 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
         Ok(_) => {
           fs::write(
             format!("{file_path}/meta.toml"),
-            toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
-              created_at.clone(),
-              pair.clone(),
-              true,
-              "".to_string(),
-            ))
-            .map_err(|e| StrategyError::FileError(e.to_string()))?,
+            toml::to_string_pretty::<ModelMetadata>(&model_metadata)
+              .map_err(|e| StrategyError::FileError(e.to_string()))?,
           )
           .map_err(|e| StrategyError::FileError(e.to_string()))
           .await?;
@@ -353,13 +371,8 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
         Err(e) => {
           fs::write(
             format!("{file_path}/meta.toml"),
-            toml::to_string_pretty::<ModelMetadata>(&ModelMetadata::new(
-              created_at.clone(),
-              pair.clone(),
-              true,
-              format!("Error: {:?}", e.to_string()),
-            ))
-            .map_err(|e| StrategyError::FileError(e.to_string()))?,
+            toml::to_string_pretty::<ModelMetadata>(&model_metadata)
+              .map_err(|e| StrategyError::FileError(e.to_string()))?,
           )
           .map_err(|e| StrategyError::FileError(e.to_string()))
           .await?;
@@ -373,4 +386,48 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
       e.to_string()
     ))),
   }
+}
+
+pub fn get_generated_models() -> color_eyre::Result<Vec<ModelMetadata>> {
+  let path = Path::new("models/generated");
+  let mut metadata_list: Vec<ModelMetadata> = Vec::new();
+  for entry in std::fs::read_dir(path)? {
+    let entry = entry?;
+    if entry.path().is_dir() {
+      let config_path = entry.path().join("meta.toml");
+      if config_path.exists() && config_path.is_file() {
+        let file = std::fs::read_to_string(&config_path)?;
+        match parse_model_metadata(&file) {
+          Ok(metadata) => {
+            metadata_list.push(metadata);
+          },
+          Err(e) => log::warn!("Error on reading modal metafile: {:?}", e),
+        }
+      }
+    }
+  }
+  metadata_list.sort_by_cached_key(|item| item.created_at);
+  metadata_list.reverse();
+  Ok(metadata_list)
+}
+
+pub fn parse_model_metadata(contents: &str) -> color_eyre::Result<ModelMetadata> {
+  let value = contents.parse::<toml::Value>()?;
+  let created_at: DateTime<Utc> = value
+    .get("created_at")
+    .and_then(toml::Value::as_str)
+    .unwrap_or_default()
+    .to_string()
+    .parse()?;
+  let error: String =
+    value.get("error").and_then(toml::Value::as_str).unwrap_or_default().to_string();
+  let pair: Pair =
+    value.get("pair").and_then(toml::Value::as_str).unwrap_or_default().parse()?;
+  let uuid: Uuid =
+    value.get("uuid").and_then(toml::Value::as_str).unwrap_or_default().parse()?;
+  let name: String =
+    value.get("name").and_then(toml::Value::as_str).unwrap_or_default().parse()?;
+  let is_finished: bool =
+    value.get("is_finished").and_then(toml::Value::as_bool).unwrap_or_default();
+  Ok(ModelMetadata { created_at, pair, is_finished, error, name, uuid })
 }

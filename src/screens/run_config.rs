@@ -12,15 +12,19 @@ use crate::{
   },
   config::{Config, KeyBindings},
   core::Command,
+  strategy::{get_generated_models, ModelId},
 };
+use chrono::{DateTime, Duration, Utc};
 use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
+
+const MODEL_SYNC_DURATION: Duration = Duration::milliseconds(500);
 
 #[derive(Default, Serialize, Clone, PartialEq, Debug)]
 pub struct CoreConfiguration {
@@ -45,17 +49,6 @@ enum SelectedField {
   Actions,
 }
 
-#[derive(Default, Clone)]
-pub struct ModelId {
-  pub name: String,
-  pub uuid: Uuid,
-}
-impl Display for ModelId {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    Ok(())
-  }
-}
-
 #[derive(Default)]
 pub struct RunConfig {
   command_tx: Option<UnboundedSender<Action>>,
@@ -70,15 +63,13 @@ pub struct RunConfig {
   exchange_fee: Input,
   model_id: Select<ModelId>,
   pair: Select<Pair>,
+  last_model_sync: DateTime<Utc>,
 }
 
 impl RunConfig {
   pub fn new() -> Self {
     let mut config = Self {
-      fetch_last_n_days: Input::new(
-        Some(0.0),
-        Some("How many days of history to fetch".to_string()),
-      ),
+      fetch_last_n_days: Input::new(Some(0.0), Some("Fetch N days history".to_string())),
       backtest_last_n_candles: Input::new(
         Some(1440.0),
         Some("(Backtest) N Candles".to_string()),
@@ -93,6 +84,7 @@ impl RunConfig {
       model_id: Select::new(vec![], None, Some("Model".to_string())),
       selected_field_index: 0,
       selected_field: SelectedField::Pair,
+      last_model_sync: Utc::now(),
       ..Self::default()
     };
     config.set_field_active(SelectedField::Pair);
@@ -111,6 +103,17 @@ impl RunConfig {
     self.starting_equity.set_active(selected_field == SelectedField::StartingEquity);
     self.exchange_fee.set_active(selected_field == SelectedField::ExchangeFee);
   }
+
+  fn sync_models(&mut self) -> Result<()> {
+    if self.last_model_sync + MODEL_SYNC_DURATION < Utc::now() {
+      let metadata_list = get_generated_models()?;
+      let model_id_list: Vec<ModelId> =
+        metadata_list.iter().map(|metadata| metadata.to_model_id()).collect();
+      let sorted_list = self.model_id.set_options(model_id_list);
+      self.last_model_sync = Utc::now();
+    }
+    Ok(())
+  }
 }
 
 impl Screen for RunConfig {
@@ -126,7 +129,9 @@ impl Screen for RunConfig {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {},
+      Action::Tick => {
+        self.sync_models()?;
+      },
       Action::Move(direction) => match direction {
         MoveDirection::Left => {
           if self.selected_field == SelectedField::Actions {

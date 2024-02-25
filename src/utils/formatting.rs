@@ -36,7 +36,7 @@ pub fn readable_duration(start: DateTime<Utc>, end: DateTime<Utc>) -> String {
 }
 
 pub fn generate_petname() -> String {
-  Petnames::generate_one(&Petnames::small(), 0u8, "")
+  Petnames::default().generate_one(2, "-")
 }
 
 pub fn time_ago(input_time: DateTime<Utc>) -> String {

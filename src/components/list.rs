@@ -6,12 +6,12 @@ use super::ListDisplay;
 use color_eyre::eyre::Result;
 use ratatui::prelude::*;
 
-pub struct List<T: ListDisplay + Clone> {
+pub struct List<T: ListDisplay + Clone + Default> {
   items: Vec<T>,
   selected: Option<usize>,
 }
 
-impl<T: ListDisplay + Clone> List<T> {
+impl<T: ListDisplay + Clone + Default> List<T> {
   pub fn add(&mut self, item: T) {
     self.items.push(item);
   }
@@ -42,9 +42,17 @@ impl<T: ListDisplay + Clone> List<T> {
     self.selected = pos
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.items.is_empty()
+  }
+
   pub fn get_selected(&self) -> Option<T> {
     if let Some(selected) = self.selected {
-      Some(self.items[selected].clone())
+      if selected < self.items.len() {
+        Some(self.items[selected].clone())
+      } else {
+        None
+      }
     } else {
       None
     }
@@ -54,7 +62,7 @@ impl<T: ListDisplay + Clone> List<T> {
     let layout = Layout::default()
       .constraints(vec![Constraint::Length(2), Constraint::Min(0)])
       .split(area);
-    //T::draw_header(T f, layout[0])?;
+    T::default().draw_header(f, layout[0])?;
     let item_height = 2;
     // Sub one item to all displayed for headers
     let n_drawable_items = (area.height / item_height).saturating_sub(1);
@@ -94,7 +102,7 @@ impl<T: ListDisplay + Clone> List<T> {
     Ok(())
   }
 }
-impl<T: ListDisplay + Clone> Default for List<T> {
+impl<T: ListDisplay + Clone + Default> Default for List<T> {
   fn default() -> Self {
     List { items: Vec::new(), selected: Some(0) }
   }
