@@ -76,6 +76,7 @@ impl Core {
     loop {
       tokio::select! {
           _ = trading_stopped.recv() => {
+              log::info!("Trading loop finished.");
               break;
           },
           command = self.command_rx.recv() => {
@@ -101,20 +102,29 @@ impl Core {
     }
 
     // File to print out the statistics
-    if let Ok(mut out) = File::create("summary.html") {
-      let css_content = std::fs::read_to_string("summary.css")
-        .map_err(|e| CoreError::ReportError(e.to_string()))?;
-      writeln!(out, "<style>{}</style>", css_content).unwrap();
-      let (overall_stats_tables, exited_trades_table) =
-        self.generate_session_summary().await?;
-      overall_stats_tables.iter().for_each(|table| {
-        let _ = table.print_html(&mut out);
-        // let _ = table.printstd();
-      });
-      let _ = exited_trades_table.print_html(&mut out);
-      warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+    log::info!("Wrapping up stats for the run ...");
+    match File::create("summary.html") {
+      Ok(mut out) => {
+        let css_content = std::fs::read_to_string("summary.css")
+          .map_err(|e| CoreError::ReportError(e.to_string()))?;
+        writeln!(out, "<style>{}</style>", css_content)
+          .map_err(|e| CoreError::ReportError(e.to_string()))?;
+        let (overall_stats_tables, exited_trades_table) =
+          self.generate_session_summary().await?;
+        overall_stats_tables.iter().for_each(|table| {
+          match table.print_html(&mut out) {
+            Err(e) => log::error!("{}", e.to_string()),
+            _ => (),
+          };
+          // let _ = table.printstd();
+        });
+        let _ = exited_trades_table.print_html(&mut out);
+        warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+      },
+      Err(e) => log::error!("{}", e.to_string()),
     }
 
+    log::info!("Done! Core run finished.");
     Ok(())
   }
 

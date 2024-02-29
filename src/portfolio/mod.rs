@@ -75,7 +75,7 @@ impl Portfolio {
     time_is_live: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
     // Determine the position_id & associated Option<Position> related to input SignalEvent
-    let position_id = determine_position_id(core_id, &signal.asset);
+    let position_id = determine_position_id(core_id, &signal.pair);
     let position = { self.database.lock().await.get_open_position(&position_id)? };
     // If signal is advising to open a new Position rather than close one, check we have cash
     if position.is_none() && self.no_cash_to_enter_new_position(core_id).await? {
@@ -93,7 +93,7 @@ impl Portfolio {
     let order_time = if time_is_live { Utc::now() } else { signal.time };
     let mut order = OrderEvent {
       time: order_time,
-      pair: signal.asset.clone(),
+      pair: signal.pair.clone(),
       market_meta: signal.market_meta,
       decision: *signal_decision,
       quantity: 1.0,

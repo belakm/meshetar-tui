@@ -154,9 +154,10 @@ pub enum Side {
 pub struct MarketFeed {
   pub market_receiver: Option<mpsc::UnboundedReceiver<MarketEvent>>,
   is_live: bool,
-  asset: Pair,
   database: Arc<Mutex<Database>>,
   last_n_candles: usize,
+  pair: Pair,
+  model_name: String,
 }
 impl MarketFeed {
   pub fn next(&mut self) -> Feed {
@@ -174,15 +175,16 @@ impl MarketFeed {
   pub async fn run(&mut self) -> Result<(), AssetError> {
     info!("Datafeed init.");
     self.market_receiver = if self.is_live {
-      Some(self.new_live_feed(self.asset.clone()).await?)
+      Some(self.new_live_feed(self.pair.clone()).await?)
     } else {
       Some(
         self
           .new_backtest(
-            self.asset.clone(),
             self.database.clone(),
             self.last_n_candles,
             50,
+            self.pair.clone(),
+            self.model_name.clone(),
           )
           .await?,
       )
@@ -202,23 +204,37 @@ impl MarketFeed {
   }
   async fn new_backtest(
     &self,
-    asset: Pair,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
     buffer_n_of_candles: usize,
+    pair: Pair,
+    model_name: String,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
-    let ticker =
-      backtest_ticker::new_ticker(asset, database, last_n_candles, buffer_n_of_candles)
-        .await?;
+    let ticker = backtest_ticker::new_ticker(
+      database,
+      last_n_candles,
+      buffer_n_of_candles,
+      pair,
+      model_name,
+    )
+    .await?;
     Ok(ticker)
   }
   pub fn new(
-    asset: Pair,
     is_live: bool,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
+    pair: Pair,
+    model_name: String,
   ) -> Self {
-    MarketFeed { market_receiver: None, asset, is_live, database, last_n_candles }
+    MarketFeed {
+      market_receiver: None,
+      is_live,
+      database,
+      last_n_candles,
+      pair,
+      model_name,
+    }
   }
 }
 

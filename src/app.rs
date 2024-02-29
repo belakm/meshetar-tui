@@ -108,12 +108,13 @@ impl App {
         .event_transmitter(event_transmitter)
         .portfolio(Arc::clone(&self.portfolio))
         .market_feed(MarketFeed::new(
-          DEFAULT_ASSET,
           core_configuration.run_live,
           self.database.clone(),
           core_configuration.backtest_last_n_candles,
+          core_configuration.pair,
+          core_configuration.model_name.clone(),
         ))
-        .strategy(Strategy::new(core_configuration.pair, core_configuration.model_id))
+        .strategy(Strategy::new(core_configuration.pair, core_configuration.model_name))
         .execution(Execution::new(core_configuration.exchange_fee))
         .build()?,
     );
@@ -157,7 +158,10 @@ impl App {
     // This starts the Core and sends message when it ends
     let action_tx = self.action_tx.clone();
     tokio::spawn(async move {
-      let _ = core.run().await;
+      match core.run().await {
+        Ok(_) => log::info!("Core {} finished.", core_id),
+        Err(e) => log::error!("{}", e.to_string()),
+      };
       let _ = action_tx.send(Action::CoreMessage(CoreMessage::Finished));
     });
 

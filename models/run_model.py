@@ -27,7 +27,8 @@ def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     suppress_output()
 
     # Load the saved model
-    loaded_model = tf.keras.models.load_model("./models/generated/" + model_name)  # Specify the path to your saved model directory or .h5 file
+    model_path = "./models/generated/" + model_name;
+    loaded_model = tf.keras.models.load_model(model_path)  # Specify the path to your saved model directory or .h5 file
     
     conn = sqlite3.connect('./database.sqlite')
     # cursor = sqliteConnection.cursor()
@@ -69,8 +70,8 @@ def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     scaler = RobustScaler()
     klines_to_predict = scaler.fit_transform(klines_to_predict.astype('float32'))
     predictions = loaded_model.predict(klines_to_predict)
-    file_path = './models/cutoffs.pickle'
-    with open(file_path, 'rb') as handle:
+    pickle_path = model_path + '/cutoffs.pickle'
+    with open(pickle_path, 'rb') as handle:
         cutoffs = pickle.load(handle)
 
     cut_predictions = pd.DataFrame()

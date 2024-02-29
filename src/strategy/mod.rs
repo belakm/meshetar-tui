@@ -42,7 +42,7 @@ impl std::fmt::Display for ModelId {
 #[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Signal {
   pub time: DateTime<Utc>,
-  pub asset: Pair,
+  pub pair: Pair,
   pub market_meta: MarketMeta,
   pub signals: HashMap<Decision, SignalStrength>,
 }
@@ -53,7 +53,7 @@ impl PartialOrd for Signal {
     match self.time.cmp(&other.time) {
       Ordering::Equal => {
         // If times are equal, compare by the `asset` field
-        match self.asset.partial_cmp(&other.asset) {
+        match self.pair.partial_cmp(&other.pair) {
           Some(Ordering::Equal) => {
             // If assets are equal, compare by the `market_meta` field
             self.market_meta.partial_cmp(&other.market_meta)
@@ -101,12 +101,12 @@ impl Decision {
 pub struct SignalStrength(pub f64);
 
 pub struct Strategy {
-  asset: Pair,
-  model_id: Uuid,
+  pair: Pair,
+  model_name: String,
 }
 impl Strategy {
-  pub fn new(asset: Pair, model_id: Uuid) -> Self {
-    Strategy { asset, model_id }
+  pub fn new(pair: Pair, model_name: String) -> Self {
+    Strategy { pair, model_name }
   }
   pub async fn generate_signal(
     &mut self,
@@ -117,7 +117,8 @@ impl Strategy {
     } else if let MarketEventDetail::Candle(candle) = &market_event.detail {
       // Run model
       let pyscript = include_str!("../../models/run_model.py");
-      let args = (candle.open_time.to_rfc3339(),);
+      let args =
+        (candle.open_time.to_rfc3339(), self.pair.to_string(), self.model_name.clone());
       let model_output = run_candle(pyscript, args)?;
       let signals = generate_signals_map(&model_output);
       if signals.len() == 0 {
@@ -126,7 +127,7 @@ impl Strategy {
       let time = Utc::now();
       let signal = Signal {
         time,
-        asset: self.asset.clone(),
+        pair: self.pair.clone(),
         market_meta: MarketMeta { close: candle.close, time },
         signals,
       };
@@ -140,11 +141,12 @@ impl Strategy {
   pub async fn generate_backtest_signals(
     open_time: DateTime<Utc>,
     candles: Vec<Candle>,
-    asset: Pair,
     buffer_n_of_candles: usize,
+    pair: Pair,
+    model_name: String,
   ) -> Result<Option<Vec<Option<Signal>>>, StrategyError> {
     let pyscript = include_str!("../../models/backtest.py");
-    let args = (open_time.to_rfc3339(), asset.to_string());
+    let args = (open_time.to_rfc3339(), pair.to_string(), model_name);
     let model_output = run_backtest(pyscript, args)?;
     let candles_that_were_analyzed = remove_vec_items_from_start(candles, 0);
     let mut candles_with_signals: Vec<(Candle, HashMap<Decision, SignalStrength>)> =
@@ -166,7 +168,7 @@ impl Strategy {
         } else {
           Some(Signal {
             time: candle.close_time,
-            asset: asset.clone(),
+            pair: pair.clone(),
             market_meta: MarketMeta { close: candle.close, time: candle.close_time },
             signals: signal_map.to_owned(),
           })
@@ -194,7 +196,7 @@ fn generate_signals_map(model_output: &str) -> HashMap<Decision, SignalStrength>
   signals
 }
 
-fn run_candle(script: &str, args: (String,)) -> PyResult<String> {
+fn run_candle(script: &str, args: (String, String, String)) -> PyResult<String> {
   let result: PyResult<String> = Python::with_gil(|py| {
     let activators = PyModule::from_code(py, script, "activators.py", "activators")?;
     let prediction: String = activators.getattr("run")?.call1(args)?.extract()?;
@@ -205,7 +207,7 @@ fn run_candle(script: &str, args: (String,)) -> PyResult<String> {
 
 fn run_backtest(
   script: &str,
-  args: (String, String),
+  args: (String, String, String),
 ) -> PyResult<Vec<(String, DateTime<Utc>)>> {
   let result: PyResult<Vec<_>> = Python::with_gil(|py| {
     let activators = PyModule::from_code(py, script, "activators.py", "activators")?;

@@ -12,10 +12,11 @@ use tokio::sync::{
 use tracing::{error, info};
 
 pub async fn new_ticker(
-  pair: Pair,
   database: Arc<Mutex<Database>>,
   last_n_candles: usize,
   buffer_n_of_candles: usize,
+  pair: Pair,
+  model_name: String,
 ) -> Result<UnboundedReceiver<MarketEvent>, AssetError> {
   let (tx, rx) = mpsc::unbounded_channel();
   let candles = database.lock().await.fetch_all_candles(pair.clone()).await?;
@@ -34,8 +35,9 @@ pub async fn new_ticker(
     match Strategy::generate_backtest_signals(
       open_time,
       candles_copy,
-      pair.clone(),
       buffer_n_of_candles,
+      pair,
+      model_name,
     )
     .await
     {

@@ -15,15 +15,15 @@ def suppress_output():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
-def backtest(candle_time=None, pair="BTCUSDT"):
+def backtest(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
     # suppress_output()
     #%%
 
     # Load the saved model
-    loaded_model = tf.keras.models.load_model("./models/neural_net_model")  # Specify the path to your saved model directory or .h5 file
-
+    model_path = "./models/generated/" + model_name; 
+    loaded_model = tf.keras.models.load_model(model_path) 
     #%%
     conn = sqlite3.connect('./database.sqlite')
     time_query = f"AND open_time >= \"{candle_time}\"" if candle_time else ""
@@ -78,11 +78,9 @@ def backtest(candle_time=None, pair="BTCUSDT"):
     scaler = RobustScaler()
     klines_to_predict = scaler.fit_transform(klines_to_predict.astype('float32'))
     predictions = loaded_model.predict(klines_to_predict)
-    print(klines)
-    file_path = './models/cutoffs.pickle'
-    with open(file_path, 'rb') as handle:
+    pickle_path = model_path + '/cutoffs.pickle'
+    with open(pickle_path, 'rb') as handle:
         cutoffs = pickle.load(handle)
-    print(cutoffs)
     cut_predictions = pd.DataFrame()
     for index, cutoff in enumerate(cutoffs):  
         cut_predictions[f'model_prediction_V{index+1}']=  list(zip(*predictions))[index] > cutoff  

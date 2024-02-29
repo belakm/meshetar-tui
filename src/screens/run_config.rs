@@ -34,7 +34,7 @@ pub struct CoreConfiguration {
   pub backtest_last_n_candles: usize,
   pub exchange_fee: f64,
   pub pair: Pair,
-  pub model_id: Uuid,
+  pub model_name: String,
 }
 
 #[derive(Default, PartialEq, EnumIter, EnumCount, Clone)]
@@ -194,7 +194,7 @@ impl Screen for RunConfig {
                   starting_equity: self.starting_equity.value(),
                   backtest_last_n_candles: self.backtest_last_n_candles.value() as usize,
                   exchange_fee: self.exchange_fee.value(),
-                  model_id: model_id.uuid,
+                  model_name: model_id.name.clone(),
                   pair,
                 },
               )))?;
