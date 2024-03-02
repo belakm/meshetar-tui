@@ -178,15 +178,10 @@ impl Screen for RunConfig {
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           if self.selected_field == SelectedField::Actions {
-            let screen_id = if self.selected_action == 0 {
-              ScreenId::BACKTEST
-            } else if self.selected_action == 1 {
-              ScreenId::RUNNING
-            } else {
-              ScreenId::HOME
-            };
             let options = self.pair.value().zip(self.model_id.value());
-            if let Some((pair, model_id)) = options {
+            let screen_id = if self.selected_action == 2 {
+              command_tx.send(Action::Navigate(ScreenId::HOME))?;
+            } else if let Some((pair, model_id)) = options {
               command_tx.send(Action::CoreCommand(Command::Start(
                 CoreConfiguration {
                   run_live: self.selected_action == 1,
@@ -198,10 +193,7 @@ impl Screen for RunConfig {
                   pair,
                 },
               )))?;
-              command_tx.send(Action::Navigate(screen_id))?;
-            } else if screen_id == ScreenId::HOME {
-              command_tx.send(Action::Navigate(screen_id))?;
-            }
+            };
           } else {
             // ACTIVATE INPUTS
             let is_field_being_edited = match self.selected_field {

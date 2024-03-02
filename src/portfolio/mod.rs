@@ -200,11 +200,11 @@ impl Portfolio {
         balance.total += position.realised_profit_loss;
 
         let asset = position.asset.clone();
-        let mut stats = database.get_statistics(&asset)?;
+        let mut stats = database.get_statistics(&core_id)?;
         stats.update(&position);
 
         // Persist exited Position & Updated Market statistics in Repository
-        database.set_statistics(asset.clone(), stats)?;
+        database.set_statistics(core_id, stats)?;
         database.set_exited_position(core_id, position)?;
       },
       None => {
@@ -221,20 +221,20 @@ impl Portfolio {
 
   pub async fn get_statistics(
     &mut self,
-    asset: &Pair,
+    core_id: &Uuid,
   ) -> Result<TradingSummary, DatabaseError> {
-    self.database.lock().await.get_statistics(asset)
+    self.database.lock().await.get_statistics(core_id)
   }
 
   pub async fn reset_statistics_with_time(
     &mut self,
-    pair: Pair,
+    core_id: Uuid,
     starting_time: DateTime<Utc>,
   ) -> Result<(), PortfolioError> {
     let mut database = self.database.lock().await;
     database
       .set_statistics(
-        pair,
+        core_id,
         TradingSummary::init(self.statistic_config, Some(starting_time)),
       )
       .map_err(PortfolioError::RepositoryInteraction)?;
@@ -243,12 +243,12 @@ impl Portfolio {
 
   pub async fn init_statistics_for_pair(
     &self,
-    pair: Pair,
+    core_id: Uuid,
     statistic_config: StatisticConfig,
   ) -> Result<(), PortfolioError> {
     let mut database = self.database.lock().await;
     database
-      .set_statistics(pair, TradingSummary::init(statistic_config, None))
+      .set_statistics(core_id, TradingSummary::init(statistic_config, None))
       .map_err(PortfolioError::RepositoryInteraction)?;
     Ok(())
   }

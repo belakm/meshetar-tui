@@ -31,7 +31,7 @@ pub enum Command {
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub enum CoreMessage {
-  Finished,
+  Finished(Uuid),
 }
 
 pub struct Core {
@@ -223,13 +223,14 @@ impl Core {
 
     let assets: Vec<_> = self.command_transmitters.clone().into_keys().collect();
     let mut stats_per_market = Vec::new();
+    let core_id: Uuid = self.id.clone();
     let futures: Vec<_> = assets
       .into_iter()
       .map(|asset| {
         let portfolio_clone = self.portfolio.clone();
         tokio::spawn(async move {
           let mut portfolio = portfolio_clone.lock().await;
-          match portfolio.get_statistics(&asset).await {
+          match portfolio.get_statistics(&core_id).await {
             Ok(statistics) => Some((asset, statistics)),
             Err(error) => {
               error!(
@@ -271,7 +272,7 @@ impl Core {
       crate::statistic::exited_positions_table(exited_positions);
     let stats_per_market: Vec<_> = stats_per_market
       .into_iter()
-      .map(|(asset, summary)| (asset.to_string(), summary))
+      .map(|(core_id, summary)| (core_id.to_string(), summary))
       .collect();
 
     let overall_stats_tables = crate::statistic::combine(

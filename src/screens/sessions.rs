@@ -12,6 +12,7 @@ use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct Sessions {
@@ -38,7 +39,9 @@ impl Screen for Sessions {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {},
+      Action::Tick => {
+        // Get stats
+      },
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           command_tx.send(Action::Navigate(ScreenId::HOME))?;

@@ -108,7 +108,7 @@ impl Trader {
                   .portfolio
                   .lock()
                   .await
-                  .reset_statistics_with_time(self.pair, start_time)
+                  .reset_statistics_with_time(self.core_id, start_time)
                   .await;
               }
               backtest_stats_initialized = true;

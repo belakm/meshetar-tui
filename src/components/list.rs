@@ -1,10 +1,10 @@
-use std::ops::Add;
+use std::{fmt::Display, ops::Add};
 
 use crate::strategy::ModelMetadata;
 
 use super::ListDisplay;
 use color_eyre::eyre::Result;
-use ratatui::prelude::*;
+use ratatui::{prelude::*, widgets::Paragraph};
 
 pub struct List<T: ListDisplay + Clone + Default> {
   items: Vec<T>,
@@ -105,5 +105,36 @@ impl<T: ListDisplay + Clone + Default> List<T> {
 impl<T: ListDisplay + Clone + Default> Default for List<T> {
   fn default() -> Self {
     List { items: Vec::new(), selected: Some(0) }
+  }
+}
+
+#[derive(Clone, Default)]
+pub struct LabelValueItem<T: Display + Clone + Default> {
+  label: String,
+  value: T,
+}
+
+impl<T: Display + Clone + Default> LabelValueItem<T> {
+  pub fn new(label: String, value: T) -> Self {
+    Self { label, value }
+  }
+}
+
+impl<T: Display + Clone + Default> ListDisplay for LabelValueItem<T> {
+  fn draw(&mut self, f: &mut Frame<'_>, area: Rect, active: bool) -> Result<()> {
+    let area =
+      Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+    f.render_widget(Paragraph::new(self.label.clone()), area[0]);
+    f.render_widget(Paragraph::new(self.value.to_string()), area[1]);
+    Ok(())
+  }
+  fn draw_header(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+    let area =
+      Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+    f.render_widget(Paragraph::new("Label".to_string()), area[0]);
+    f.render_widget(Paragraph::new("Value".to_string()), area[0]);
+    Ok(())
   }
 }

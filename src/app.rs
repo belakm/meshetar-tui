@@ -88,7 +88,7 @@ static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
 };
 
 impl App {
-  async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<()> {
+  async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<Uuid> {
     let mut traders = Vec::new();
     let core_id = Uuid::new_v4();
     let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
@@ -162,10 +162,10 @@ impl App {
         Ok(_) => log::info!("Core {} finished.", core_id),
         Err(e) => log::error!("{}", e.to_string()),
       };
-      let _ = action_tx.send(Action::CoreMessage(CoreMessage::Finished));
+      let _ = action_tx.send(Action::CoreMessage(CoreMessage::Finished(core_id)));
     });
 
-    Ok(())
+    Ok(core_id)
   }
 
   pub async fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
@@ -215,14 +215,14 @@ impl App {
       ScreenId::SESSIONS => Box::new(Sessions::default()),
       ScreenId::MODELS => Box::new(Models::default()),
       ScreenId::MODELCONFIG => Box::new(ModelConfig::default()),
-      ScreenId::REPORT => Box::new(Report::default()),
-      ScreenId::RUNNING => {
-        let mut running = Running::new(self.database.clone(), Pair::BTCUSDT);
+      ScreenId::REPORT(core_id) => Box::new(Report::new(self.database.clone(), core_id)),
+      ScreenId::RUNNING(core_id) => {
+        let mut running = Running::new(self.database.clone(), core_id);
         running.set_mode(RunningMode::RUNNING);
         Box::new(running)
       },
-      ScreenId::BACKTEST => {
-        let running = Running::new(self.database.clone(), Pair::BTCUSDT);
+      ScreenId::BACKTEST(core_id) => {
+        let running = Running::new(self.database.clone(), core_id);
         Box::new(running)
       },
       ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
@@ -321,7 +321,8 @@ impl App {
           },
           Action::CoreCommand(command) => match command {
             Command::Start(core_configuration) => {
-              let _ = self.new_run(core_configuration).await;
+              let core_id = self.new_run(core_configuration).await?;
+              let _ = self.navigate(ScreenId::RUNNING(core_id))?;
             },
             _ => {
               if let Some(tx) = &self.core_command_tx {
@@ -330,8 +331,8 @@ impl App {
             },
           },
           Action::CoreMessage(msg) => match msg {
-            CoreMessage::Finished => {
-              self.navigate(ScreenId::REPORT)?;
+            CoreMessage::Finished(core_id) => {
+              self.navigate(ScreenId::REPORT(core_id))?;
             },
           },
           Action::GenerateModel(pair) => {

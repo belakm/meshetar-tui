@@ -8,6 +8,7 @@ use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::Rect;
 use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
+use uuid::Uuid;
 
 pub mod home;
 pub mod model_config;
@@ -22,11 +23,11 @@ pub enum ScreenId {
   HOME,
   MODELS,
   MODELCONFIG,
-  REPORT,
+  REPORT(Uuid),
   SESSIONS,
   RUNCONFIG,
-  RUNNING,
-  BACKTEST,
+  RUNNING(Uuid),
+  BACKTEST(Uuid),
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

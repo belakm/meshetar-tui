@@ -21,7 +21,7 @@ pub struct Database {
   open_positions: HashMap<PositionId, Position>,
   closed_positions: HashMap<String, Vec<Position>>,
   current_balances: HashMap<BalanceId, Balance>,
-  statistics: HashMap<Pair, TradingSummary>,
+  statistics: HashMap<Uuid, TradingSummary>,
 }
 impl Database {
   pub async fn new() -> Result<Database, DatabaseError> {
@@ -182,11 +182,12 @@ impl Database {
   }
 
   pub fn get_balance(&mut self, core_id: Uuid) -> Result<Balance, DatabaseError> {
-    self
-      .current_balances
-      .get(&Balance::balance_id(core_id))
-      .copied()
-      .ok_or(DatabaseError::DataMissing)
+    self.current_balances.get(&Balance::balance_id(core_id)).copied().ok_or(
+      DatabaseError::DataMissing(format!(
+        "Balance for {} missing on database lookup.",
+        core_id
+      )),
+    )
   }
 
   pub fn set_open_position(&mut self, position: Position) -> Result<(), DatabaseError> {
@@ -313,15 +314,21 @@ impl Database {
 
   pub fn set_statistics(
     &mut self,
-    pair: Pair,
+    core_id: Uuid,
     statistic: TradingSummary,
   ) -> Result<(), DatabaseError> {
-    self.statistics.insert(pair, statistic);
+    self.statistics.insert(core_id, statistic);
     Ok(())
   }
 
-  pub fn get_statistics(&mut self, pair: &Pair) -> Result<TradingSummary, DatabaseError> {
-    self.statistics.get(pair).copied().ok_or(DatabaseError::DataMissing)
+  pub fn get_statistics(
+    &mut self,
+    core_id: &Uuid,
+  ) -> Result<TradingSummary, DatabaseError> {
+    self.statistics.get(core_id).copied().ok_or(DatabaseError::DataMissing(format!(
+      "Statistics for {} missing on database lookup.",
+      core_id
+    )))
   }
 }
 

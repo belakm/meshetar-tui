@@ -7,7 +7,8 @@ use crate::{
   },
   config::{Config, KeyBindings},
   core::Command,
-  database::Database,
+  database::{error::DatabaseError, Database},
+  statistic::TradingSummary,
 };
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -15,6 +16,7 @@ use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{mpsc::UnboundedSender, Mutex};
+use uuid::Uuid;
 
 #[derive(Default)]
 pub enum RunningMode {
@@ -29,16 +31,40 @@ pub struct Running {
   config: Config,
   mode: RunningMode,
   database: Option<Arc<Mutex<Database>>>,
-  pair: Pair,
+  stats: Option<TradingSummary>,
+  core_id: Uuid,
 }
 
 impl Running {
-  pub fn new(database: Arc<Mutex<Database>>, pair: Pair) -> Self {
-    Self { database: Some(database), pair, ..Self::default() }
+  pub fn new(database: Arc<Mutex<Database>>, core_id: Uuid) -> Self {
+    Self { database: Some(database), core_id, ..Self::default() }
   }
 
   pub fn set_mode(&mut self, mode: RunningMode) {
     self.mode = mode;
+  }
+
+  pub fn set_core(&mut self, core_id: Uuid) {
+    self.core_id = core_id
+  }
+
+  async fn update_stats(&mut self) -> Result<()> {
+    let stats: Result<TradingSummary, DatabaseError> = {
+      if let Some(db) = self.database.clone() {
+        let mut db = db.try_lock()?;
+        db.get_statistics(&self.core_id.clone())
+      } else {
+        Err(DatabaseError::DataMissing(format!(
+          "Statistics for {} not found.",
+          self.core_id.to_string()
+        )))
+      }
+    };
+    match stats {
+      Ok(stats) => self.stats = Some(stats),
+      Err(e) => log::error!("{}", e.to_string()),
+    }
+    Ok(())
   }
 }
 
@@ -55,13 +81,15 @@ impl Screen for Running {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {},
+      Action::Tick => {
+        let _ = self.update_stats();
+      },
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           command_tx.send(Action::CoreCommand(Command::Terminate(
             "User finished the run".to_string(),
           )))?;
-          command_tx.send(Action::Navigate(ScreenId::REPORT))?;
+          command_tx.send(Action::Navigate(ScreenId::REPORT(self.core_id.clone())))?;
         }
       },
       _ => {},
@@ -70,16 +98,6 @@ impl Screen for Running {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    let stats = {
-      if let Some(db) = self.database.clone() {
-        let mut db = db.try_lock()?;
-        let stats = db.get_statistics(&self.pair.clone());
-        Some(stats)
-      } else {
-        None
-      }
-    };
-
     f.render_widget(outer_container_block(), area);
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
     let (header_area, content_area) = default_layout(inner_area);
@@ -101,7 +119,7 @@ impl Screen for Running {
     // Change
 
     f.render_widget(Paragraph::new("Running :)"), content_layout[0]);
-    if let Some(Ok(stats)) = stats {
+    if let Some(stats) = self.stats {
       f.render_widget(
         Paragraph::new(format!("{}", stats.pnl.total_pnl)),
         content_layout[1],
