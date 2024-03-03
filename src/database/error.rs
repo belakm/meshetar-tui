@@ -8,7 +8,7 @@ pub enum DatabaseError {
   SQLError(#[from] sqlx::Error),
   #[error("Failed to read from database")]
   ReadError,
-  #[error("Data was not found in the database")]
+  #[error("Data was not found in the database: {0}")]
   DataMissing(String),
   #[error("Database initialization problem: {0}")]
   Initialization(String),

@@ -193,6 +193,7 @@ impl Trader {
     Ok(())
   }
   fn receive_remote_command(&mut self) -> Option<Command> {
+    let tries = 0;
     match self.command_reciever.try_recv() {
       Ok(command) => {
         debug!(

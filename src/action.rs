@@ -17,6 +17,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ScreenUpdate {
   Report(TradingSummary),
+  Running(TradingSummary),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

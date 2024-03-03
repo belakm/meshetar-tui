@@ -9,7 +9,7 @@ use crate::{
   trading::Trader,
   utils::binance_client::BinanceClient,
 };
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use error::CoreError;
 use prettytable::Table;
 use serde::Serialize;
@@ -259,7 +259,7 @@ impl Core {
       .min_by(|stats1, stats2| stats1.starting_time.cmp(&stats2.starting_time))
       .map(|stats| stats.starting_time)
       .to_owned()
-      .unwrap();
+      .unwrap_or(Utc::now());
     warn!("TRADING SINCE: {}", min_start_time);
     let mut statistics_summary =
       TradingSummary::init(self.statistics_config, Some(min_start_time));

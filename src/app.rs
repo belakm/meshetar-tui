@@ -354,8 +354,9 @@ impl App {
           },
           Action::GenerateReport(core_id) => {
             let mut db = self.database.try_lock()?;
-            let report = db.get_statistics(&core_id)?;
-            action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?;
+            if let Ok(report) = db.get_statistics(&core_id) {
+              action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?;
+            }
           },
           _ => {},
         }

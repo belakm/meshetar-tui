@@ -1,9 +1,10 @@
 use super::{Screen, ScreenId};
 use crate::{
-  action::Action,
+  action::{Action, ScreenUpdate},
   assets::Pair,
-  components::style::{
-    button, default_layout, logo, outer_container_block, stylized_block,
+  components::{
+    list::{LabelValueItem, List},
+    style::{button, default_layout, logo, outer_container_block, stylized_block},
   },
   config::{Config, KeyBindings},
   core::Command,
@@ -32,6 +33,7 @@ pub struct Running {
   mode: RunningMode,
   stats: Option<TradingSummary>,
   core_id: Uuid,
+  short_report_list: Option<List<LabelValueItem<String>>>,
 }
 
 impl Running {
@@ -62,6 +64,19 @@ impl Screen for Running {
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
       Action::Tick => {},
+      Action::ScreenUpdate(update) => match update {
+        ScreenUpdate::Running(report) => {
+          if self.short_report_list.is_none() {
+            let list = List::default();
+            self.short_report_list = Some(list)
+          }
+          let _ = self.short_report_list.as_mut().is_some_and(|list| {
+            list.update_items(report.generate_short_report());
+            true
+          });
+        },
+        _ => {},
+      },
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           command_tx.send(Action::CoreCommand(Command::Terminate(
