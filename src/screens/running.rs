@@ -63,7 +63,11 @@ impl Screen for Running {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {},
+      Action::Tick => {
+        if let Some(command_tx) = &self.command_tx {
+          command_tx.send(Action::GenerateReport(self.core_id.clone()))?;
+        }
+      },
       Action::ScreenUpdate(update) => match update {
         ScreenUpdate::Running(report) => {
           if self.short_report_list.is_none() {

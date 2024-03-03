@@ -220,11 +220,10 @@ impl Core {
   }
   async fn generate_session_summary(&self) -> Result<(Vec<Table>, Table), CoreError> {
     // Fetch statistics for each Market
-
     let assets: Vec<_> = self.command_transmitters.clone().into_keys().collect();
     let mut stats_per_market = Vec::new();
     let core_id: Uuid = self.id.clone();
-    let futures: Vec<_> = assets
+    let stats: Vec<_> = assets
       .into_iter()
       .map(|asset| {
         let portfolio_clone = self.portfolio.clone();
@@ -245,8 +244,9 @@ impl Core {
       })
       .collect();
 
-    for future in futures {
-      if let Some(result) = future.await.unwrap() {
+    for stat in stats {
+      let stat = stat.await.map_err(|e| CoreError::ReportError(e.to_string()))?;
+      if let Some(result) = stat {
         stats_per_market.push(result);
       }
     }
