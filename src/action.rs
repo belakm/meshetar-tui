@@ -5,12 +5,19 @@ use serde::{
   de::{self, Deserializer, Visitor},
   Deserialize, Serialize,
 };
+use uuid::Uuid;
 
 use crate::{
   assets::Pair,
   core::{Command, CoreMessage},
   screens::ScreenId,
+  statistic::TradingSummary,
 };
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum ScreenUpdate {
+  Report(TradingSummary),
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Action {
@@ -30,6 +37,8 @@ pub enum Action {
   CoreCommand(Command),
   CoreMessage(CoreMessage),
   GenerateModel(Pair),
+  GenerateReport(Uuid),
+  ScreenUpdate(ScreenUpdate),
 }
 
 impl<'de> Deserialize<'de> for Action {

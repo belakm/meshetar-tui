@@ -30,14 +30,13 @@ pub struct Running {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   mode: RunningMode,
-  database: Option<Arc<Mutex<Database>>>,
   stats: Option<TradingSummary>,
   core_id: Uuid,
 }
 
 impl Running {
-  pub fn new(database: Arc<Mutex<Database>>, core_id: Uuid) -> Self {
-    Self { database: Some(database), core_id, ..Self::default() }
+  pub fn new(core_id: Uuid) -> Self {
+    Self { core_id, ..Self::default() }
   }
 
   pub fn set_mode(&mut self, mode: RunningMode) {
@@ -46,25 +45,6 @@ impl Running {
 
   pub fn set_core(&mut self, core_id: Uuid) {
     self.core_id = core_id
-  }
-
-  async fn update_stats(&mut self) -> Result<()> {
-    let stats: Result<TradingSummary, DatabaseError> = {
-      if let Some(db) = self.database.clone() {
-        let mut db = db.try_lock()?;
-        db.get_statistics(&self.core_id.clone())
-      } else {
-        Err(DatabaseError::DataMissing(format!(
-          "Statistics for {} not found.",
-          self.core_id.to_string()
-        )))
-      }
-    };
-    match stats {
-      Ok(stats) => self.stats = Some(stats),
-      Err(e) => log::error!("{}", e.to_string()),
-    }
-    Ok(())
   }
 }
 
@@ -81,9 +61,7 @@ impl Screen for Running {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {
-        let _ = self.update_stats();
-      },
+      Action::Tick => {},
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           command_tx.send(Action::CoreCommand(Command::Terminate(

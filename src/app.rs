@@ -8,7 +8,7 @@ const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
 use chrono::{DateTime, Utc};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::prelude::Rect;
+use ratatui::{prelude::Rect, widgets::Clear};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -19,7 +19,7 @@ use tokio::sync::{
 use uuid::Uuid;
 
 use crate::{
-  action::{Action, MoveDirection},
+  action::{Action, MoveDirection, ScreenUpdate},
   assets::{error::AssetError, MarketFeed, Pair},
   components::style::stylized_block,
   config::Config,
@@ -40,7 +40,7 @@ use crate::{
     sessions::Sessions,
     Screen, ScreenId,
   },
-  statistic::StatisticConfig,
+  statistic::{StatisticConfig, TradingSummary},
   strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
   tui::{self, Tui},
@@ -215,14 +215,18 @@ impl App {
       ScreenId::SESSIONS => Box::new(Sessions::default()),
       ScreenId::MODELS => Box::new(Models::default()),
       ScreenId::MODELCONFIG => Box::new(ModelConfig::default()),
-      ScreenId::REPORT(core_id) => Box::new(Report::new(self.database.clone(), core_id)),
+      ScreenId::REPORT(core_id) => {
+        let screen = Box::new(Report::new(core_id));
+        self.action_tx.send(Action::GenerateReport(core_id))?;
+        screen
+      },
       ScreenId::RUNNING(core_id) => {
-        let mut running = Running::new(self.database.clone(), core_id);
+        let mut running = Running::new(core_id);
         running.set_mode(RunningMode::RUNNING);
         Box::new(running)
       },
       ScreenId::BACKTEST(core_id) => {
-        let running = Running::new(self.database.clone(), core_id);
+        let running = Running::new(core_id);
         Box::new(running)
       },
       ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
@@ -347,6 +351,11 @@ impl App {
                 },
               }
             });
+          },
+          Action::GenerateReport(core_id) => {
+            let mut db = self.database.try_lock()?;
+            let report = db.get_statistics(&core_id)?;
+            action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?;
           },
           _ => {},
         }

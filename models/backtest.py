@@ -18,7 +18,7 @@ def suppress_output():
 def backtest(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
-    # suppress_output()
+    suppress_output()
     #%%
 
     # Load the saved model
