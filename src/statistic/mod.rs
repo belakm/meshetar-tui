@@ -52,11 +52,13 @@ impl TradingSummary {
   }
   pub fn generate_short_report(&self) -> Vec<LabelValueItem<String>> {
     let rows: Vec<LabelValueItem<String>> = vec![
-      LabelValueItem::new("Ran for".to_string(), format!("{}", self.pnl_returns.time)),
-      LabelValueItem::new("Total".to_string(), format!("{}", self.pnl_returns.total.sum)),
       LabelValueItem::new(
-        "Losses".to_string(),
-        format!("{}", self.pnl_returns.losses.sum),
+        "Ran for".to_string(),
+        format!("{}", self.pnl_returns.duration),
+      ),
+      LabelValueItem::new(
+        "Trades".to_string(),
+        format!("{}", self.pnl_returns.total.count),
       ),
     ];
     rows

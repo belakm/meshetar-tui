@@ -20,9 +20,6 @@ pub async fn new_ticker(
 ) -> Result<UnboundedReceiver<MarketEvent>, AssetError> {
   let (tx, rx) = mpsc::unbounded_channel();
   let candles = database.lock().await.fetch_all_candles(pair.clone()).await?;
-
-  info!("debug {}{}", candles.len(), last_n_candles);
-
   let skip_n_candles = candles.len() - last_n_candles;
 
   // take only specified number of candles

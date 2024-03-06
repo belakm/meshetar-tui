@@ -18,7 +18,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use std::sync::Arc;
+use std::{sync::Arc, thread::sleep};
 use strum::{Display, EnumString};
 use tokio::sync::{mpsc, Mutex};
 use tracing::info;
@@ -46,6 +46,7 @@ pub enum Pair {
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub enum Feed {
   Next(MarketEvent),
+  Empty,
   Unhealthy,
   Finished,
 }
@@ -164,16 +165,13 @@ impl MarketFeed {
     if self.market_receiver.is_none() {
       return Feed::Unhealthy;
     }
-    loop {
-      match self.market_receiver.as_mut().unwrap().try_recv() {
-        Ok(event) => break Feed::Next(event),
-        Err(mpsc::error::TryRecvError::Empty) => continue,
-        Err(mpsc::error::TryRecvError::Disconnected) => break Feed::Finished,
-      }
+    match self.market_receiver.as_mut().unwrap().try_recv() {
+      Ok(event) => Feed::Next(event),
+      Err(mpsc::error::TryRecvError::Empty) => Feed::Empty,
+      Err(mpsc::error::TryRecvError::Disconnected) => Feed::Finished,
     }
   }
   pub async fn run(&mut self) -> Result<(), AssetError> {
-    info!("Datafeed init.");
     self.market_receiver = if self.is_live {
       Some(self.new_live_feed(self.pair.clone()).await?)
     } else {
@@ -197,9 +195,9 @@ impl MarketFeed {
   }
   async fn new_live_feed(
     &self,
-    asset: Pair,
+    pair: Pair,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
-    let ticker = asset_ticker::new_ticker(asset).await?;
+    let ticker = asset_ticker::new_ticker(pair).await?;
     Ok(ticker)
   }
   async fn new_backtest(

@@ -52,10 +52,13 @@ impl Portfolio {
     core_id: Uuid,
     starting_cash: f64,
   ) -> Result<(), PortfolioError> {
-    self.database.lock().await.set_balance(
+    let mut db = self.database.lock().await;
+    db.set_balance(
       core_id,
       Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
     )?;
+    db.set_statistics(core_id, TradingSummary::init(self.statistic_config, None))
+      .map_err(PortfolioError::RepositoryInteraction)?;
     Ok(())
   }
 
@@ -241,7 +244,7 @@ impl Portfolio {
     Ok(())
   }
 
-  pub async fn init_statistics_for_pair(
+  pub async fn init_statistics_for_core(
     &self,
     core_id: Uuid,
     statistic_config: StatisticConfig,

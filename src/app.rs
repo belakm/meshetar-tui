@@ -1,6 +1,3 @@
-const IS_LIVE: bool = false;
-const BACKTEST_LAST_N_CANDLES: usize = 1440;
-const FETCH_N_DAYS_HISTORY: i64 = 0;
 const STARTING_EQUITY: f64 = 1000.0;
 const EXCHANGE_FEE: f64 = 0.0;
 const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
@@ -12,9 +9,13 @@ use ratatui::{prelude::Rect, widgets::Clear};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
-use tokio::sync::{
-  mpsc::{self, UnboundedReceiver, UnboundedSender},
-  Mutex,
+use tokio::{
+  sync::{
+    broadcast::error::TryRecvError,
+    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    Mutex,
+  },
+  time::sleep,
 };
 use uuid::Uuid;
 
@@ -81,7 +82,7 @@ pub struct App {
 }
 
 static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
-  starting_equity: STARTING_EQUITY,
+  starting_equity: 0f64,
   trading_days_per_year: 365,
   risk_free_return: 0.0,
   created_at: DateTime::UNIX_EPOCH,
@@ -91,19 +92,19 @@ impl App {
   async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<Uuid> {
     let mut traders = Vec::new();
     let core_id = Uuid::new_v4();
-    let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
+    let (event_transmitter, mut event_receiver) = mpsc::unbounded_channel();
     let event_transmitter = EventTx::new(event_transmitter);
     let (core_command_tx, core_command_rx) = mpsc::channel::<Command>(20);
     let (core_message_tx, mut core_message_rx) = mpsc::channel::<CoreMessage>(20);
     let (trader_command_transmitter, trader_command_receiver) =
       mpsc::channel::<Command>(20);
     let command_transmitters =
-      HashMap::from([(DEFAULT_ASSET, trader_command_transmitter)]);
+      HashMap::from([(core_configuration.pair, trader_command_transmitter)]);
     traders.push(
       Trader::builder()
         .core_id(core_id)
-        .pair(DEFAULT_ASSET)
-        .trading_is_live(IS_LIVE)
+        .pair(core_configuration.pair)
+        .trading_is_live(core_configuration.run_live)
         .command_reciever(trader_command_receiver)
         .event_transmitter(event_transmitter)
         .portfolio(Arc::clone(&self.portfolio))
@@ -135,7 +136,7 @@ impl App {
       .traders(traders)
       .database(self.database.clone())
       .statistics_config(statistic_config)
-      .n_days_history_fetch(FETCH_N_DAYS_HISTORY)
+      .n_days_history_fetch(core_configuration.n_days_to_fetch as i64)
       .build()?;
 
     self
@@ -146,6 +147,23 @@ impl App {
       .await?;
 
     self.core_command_tx = Some(core_command_tx);
+
+    tokio::spawn(async move {
+      loop {
+        match event_receiver.try_recv() {
+          Ok(msg) => log::info!("{:?}", msg),
+          Err(e) => match e {
+            tokio::sync::mpsc::error::TryRecvError::Empty => {
+              sleep(std::time::Duration::from_micros(200)).await;
+            },
+            tokio::sync::mpsc::error::TryRecvError::Disconnected => {
+              log::warn!("Event rx disconnected.");
+              break;
+            },
+          },
+        }
+      }
+    });
 
     // This forwards messages from Core to App
     let action_tx_clone = self.action_tx.clone();
@@ -288,14 +306,10 @@ impl App {
       }
       while let Ok(action) = self.action_rx.try_recv() {
         let action_clone = action.clone();
-        let action_clone_log = action.clone();
-
-        if action_clone_log != Action::Tick && action_clone_log != Action::Render {
-          log::info!("{action:?}");
-        }
-
         match action {
-          Action::Tick => {},
+          Action::Tick => {
+            // log::info!("Tick.");
+          },
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
@@ -354,8 +368,11 @@ impl App {
           },
           Action::GenerateReport(core_id) => {
             let mut db = self.database.try_lock()?;
-            if let Ok(report) = db.get_statistics(&core_id) {
-              action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?;
+            match db.get_statistics(&core_id) {
+              Ok(report) => {
+                action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?
+              },
+              Err(e) => log::warn!("Report generation error: {:?}", e),
             }
           },
           _ => {},

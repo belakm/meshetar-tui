@@ -1,6 +1,6 @@
 import os
 # THIS MUTES TENSORFLOW 
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 #%%
 import tensorflow as tf
@@ -16,12 +16,16 @@ def suppress_output():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
+def run_test(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
+    suppress_output()
+    return "hold"
+
 def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     # Comment out the warning silencers below when developing:
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
     warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
-    # suppress_output()
+    suppress_output()
 
     # Load the saved model
     model_path = "./models/generated/" + model_name;

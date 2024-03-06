@@ -53,8 +53,14 @@ impl MessageTransmitter<Event> for EventTx {
       return;
     }
 
+    log::info!("MSG {:?} {:?}", self.event_tx.is_closed(), message);
+
     if self.event_tx.send(message).is_err() {
-      warn!(action = "setting receiver_dropped = true", why = "event receiver dropped", "cannot send Events");
+      warn!(
+        action = "setting receiver_dropped = true",
+        why = "event receiver dropped",
+        "cannot send Events"
+      );
       self.receiver_dropped = true;
     }
   }

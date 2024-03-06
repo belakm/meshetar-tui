@@ -325,9 +325,10 @@ impl Database {
     &mut self,
     core_id: &Uuid,
   ) -> Result<TradingSummary, DatabaseError> {
+    let keys = self.statistics.keys();
     self.statistics.get(core_id).copied().ok_or(DatabaseError::DataMissing(format!(
-      "Statistics for {} missing on database lookup.",
-      core_id
+      "Statistics for {} missing on database lookup. Available keys: {:?}",
+      core_id, keys
     )))
   }
 }

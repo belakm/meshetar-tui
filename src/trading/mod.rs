@@ -11,9 +11,12 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 use strum::{Display, EnumString};
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+  sync::{mpsc, Mutex},
+  time::sleep,
+};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -49,10 +52,11 @@ impl Trader {
     TraderBuilder::new()
   }
   pub async fn run(&mut self) -> Result<(), TraderError> {
-    info!("Trader {} starting up.", self.pair);
     let _ = self.market_feed.run().await?;
-    let _ = tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    let _ = tokio::time::sleep(std::time::Duration::from_micros(200)).await;
+    // TODO: SUS - find a more elegant way
     let mut backtest_stats_initialized = false;
+
     loop {
       while let Some(command) = self.receive_remote_command() {
         match command {
@@ -77,6 +81,10 @@ impl Trader {
               action = "continuing while waiting for healthy Feed",
               "MarketFeed unhealthy"
           );
+          continue;
+        },
+        Feed::Empty => {
+          sleep(Duration::from_micros(200)).await;
           continue;
         },
         Feed::Finished => {
@@ -193,7 +201,6 @@ impl Trader {
     Ok(())
   }
   fn receive_remote_command(&mut self) -> Option<Command> {
-    let tries = 0;
     match self.command_reciever.try_recv() {
       Ok(command) => {
         debug!(
@@ -291,7 +298,7 @@ impl TraderBuilder {
       event_transmitter: self
         .event_transmitter
         .ok_or(TraderError::BuilderIncomplete("event_tx"))?,
-      event_queue: VecDeque::with_capacity(2),
+      event_queue: VecDeque::with_capacity(20),
       portfolio: self.portfolio.ok_or(TraderError::BuilderIncomplete("portfolio"))?,
       market_feed: self.market_feed.ok_or(TraderError::BuilderIncomplete("data"))?,
       strategy: self.strategy.ok_or(TraderError::BuilderIncomplete("strategy"))?,

@@ -31,7 +31,6 @@ pub struct Running {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   mode: RunningMode,
-  stats: Option<TradingSummary>,
   core_id: Uuid,
   short_report_list: Option<List<LabelValueItem<String>>>,
 }
@@ -69,7 +68,7 @@ impl Screen for Running {
         }
       },
       Action::ScreenUpdate(update) => match update {
-        ScreenUpdate::Running(report) => {
+        ScreenUpdate::Report(report) => {
           if self.short_report_list.is_none() {
             let list = List::default();
             self.short_report_list = Some(list)
@@ -115,12 +114,13 @@ impl Screen for Running {
     // Trades
     // Change
 
-    f.render_widget(Paragraph::new("Running :)"), content_layout[0]);
-    if let Some(stats) = self.stats {
-      f.render_widget(
-        Paragraph::new(format!("{}", stats.pnl.total_pnl)),
-        content_layout[1],
-      );
+    f.render_widget(
+      Paragraph::new(format!("Running {}", self.core_id)),
+      content_layout[0],
+    );
+
+    if let Some(list) = self.short_report_list.as_mut() {
+      list.draw(f, content_layout[1])?;
     } else {
       f.render_widget(Paragraph::new("Waiting for DB"), content_layout[1]);
     }

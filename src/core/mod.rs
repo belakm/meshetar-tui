@@ -102,7 +102,6 @@ impl Core {
     }
 
     // File to print out the statistics
-    log::info!("Wrapping up stats for the run ...");
     match File::create("summary.html") {
       Ok(mut out) => {
         let css_content = std::fs::read_to_string("summary.css")
@@ -123,8 +122,6 @@ impl Core {
       },
       Err(e) => log::error!("{}", e.to_string()),
     }
-
-    log::info!("Done! Core run finished.");
     Ok(())
   }
 
@@ -199,11 +196,10 @@ impl Core {
       }
     }
   }
-  async fn exit_position(&self, asset: Pair) {
-    if let Some((market_ref, command_tx)) =
-      self.command_transmitters.get_key_value(&asset)
+  async fn exit_position(&self, pair: Pair) {
+    if let Some((market_ref, command_tx)) = self.command_transmitters.get_key_value(&pair)
     {
-      if command_tx.send(Command::ExitPosition(asset)).await.is_err() {
+      if command_tx.send(Command::ExitPosition(pair)).await.is_err() {
         error!(
           market = &*format!("{:?}", market_ref),
           why = "dropped receiver",
@@ -212,7 +208,7 @@ impl Core {
       }
     } else {
       warn!(
-        market = &*format!("{:?}", asset),
+        market = &*format!("{:?}", pair),
         why = "Engine has no trader_command_tx associated with provided Market",
         "failed to exit Position"
       );

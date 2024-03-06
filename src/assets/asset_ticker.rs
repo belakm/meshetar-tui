@@ -70,8 +70,6 @@ pub async fn new_ticker(
     .subscribe(vec![&KlineStream::new(&pair.to_string(), KlineInterval::Minutes1).into()])
     .await;
 
-  info!("Connected to string {} with message_id {}", pair.to_string(), subscription);
-
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
       match message {
@@ -82,11 +80,14 @@ pub async fn new_ticker(
             serde_json::from_str(&string_data);
           match raw_asset_parse {
             Ok(new_kline) => {
-              let _ = tx.send(MarketEvent {
+              match tx.send(MarketEvent {
                 time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
-                asset: pair.clone(),
+                asset: pair,
                 detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
-              });
+              }) {
+                Err(e) => log::error!("{}", e),
+                _ => {},
+              };
             },
             Err(e) => {
               warn!("Error parsing asset feed event: {}", e);

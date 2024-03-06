@@ -38,12 +38,8 @@ impl ListDisplay for ModelId {
       Layout::horizontal(vec![Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(area);
     f.render_widget(
-      Paragraph::new("Pair".to_string()).block(input_block(false, false)),
+      Paragraph::new("Select a model".to_string()).block(input_block(false, false)),
       layout[0],
-    );
-    f.render_widget(
-      Paragraph::new("Pet name".to_string()).block(input_block(false, false)),
-      layout[1],
     );
     Ok(())
   }

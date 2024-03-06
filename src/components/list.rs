@@ -2,8 +2,8 @@ use std::{fmt::Display, ops::Add};
 
 use crate::strategy::ModelMetadata;
 
-use super::ListDisplay;
-use color_eyre::eyre::Result;
+use super::{style::default_style, ListDisplay};
+use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use ratatui::{prelude::*, widgets::Paragraph};
 
 pub struct List<T: ListDisplay + Clone + Default> {
@@ -125,16 +125,28 @@ impl<T: Display + Clone + Default> ListDisplay for LabelValueItem<T> {
     let area =
       Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
-    f.render_widget(Paragraph::new(self.label.clone()), area[0]);
-    f.render_widget(Paragraph::new(self.value.to_string()), area[1]);
+    f.render_widget(
+      Paragraph::new(self.label.clone()).style(default_style(active)),
+      area[0],
+    );
+    f.render_widget(
+      Paragraph::new(self.value.to_string()).style(default_style(active)),
+      area[1],
+    );
     Ok(())
   }
   fn draw_header(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let area =
       Layout::horizontal(vec![Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
-    f.render_widget(Paragraph::new("Label".to_string()), area[0]);
-    f.render_widget(Paragraph::new("Value".to_string()), area[0]);
+    f.render_widget(
+      Paragraph::new("Label".to_string()).style(default_style(false)),
+      area[0],
+    );
+    f.render_widget(
+      Paragraph::new("Value".to_string()).style(default_style(false)),
+      area[1],
+    );
     Ok(())
   }
 }
