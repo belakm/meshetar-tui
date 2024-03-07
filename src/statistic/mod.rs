@@ -13,7 +13,7 @@ use self::{
 use crate::{
   components::{list::LabelValueItem, ListDisplay},
   portfolio::position::Position,
-  utils::formatting::{dt_to_readable, readable_duration},
+  utils::formatting::{dt_to_readable, duration_to_readable, readable_duration},
 };
 use chrono::{DateTime, Utc};
 use prettytable::{row, Cell, Row, Table};
@@ -49,19 +49,6 @@ impl TradingSummary {
     for position in positions.iter() {
       self.update(position)
     }
-  }
-  pub fn generate_short_report(&self) -> Vec<LabelValueItem<String>> {
-    let rows: Vec<LabelValueItem<String>> = vec![
-      LabelValueItem::new(
-        "Ran for".to_string(),
-        format!("{}", self.pnl_returns.duration),
-      ),
-      LabelValueItem::new(
-        "Trades".to_string(),
-        format!("{}", self.pnl_returns.total.count),
-      ),
-    ];
-    rows
   }
 }
 

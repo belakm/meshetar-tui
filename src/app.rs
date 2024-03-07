@@ -9,13 +9,9 @@ use ratatui::{prelude::Rect, widgets::Clear};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
-use tokio::{
-  sync::{
-    broadcast::error::TryRecvError,
-    mpsc::{self, UnboundedReceiver, UnboundedSender},
-    Mutex,
-  },
-  time::sleep,
+use tokio::sync::{
+  mpsc::{self, UnboundedReceiver, UnboundedSender},
+  Mutex,
 };
 use uuid::Uuid;
 
@@ -92,7 +88,7 @@ impl App {
   async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<Uuid> {
     let mut traders = Vec::new();
     let core_id = Uuid::new_v4();
-    let (event_transmitter, mut event_receiver) = mpsc::unbounded_channel();
+    let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
     let event_transmitter = EventTx::new(event_transmitter);
     let (core_command_tx, core_command_rx) = mpsc::channel::<Command>(20);
     let (core_message_tx, mut core_message_rx) = mpsc::channel::<CoreMessage>(20);
@@ -147,23 +143,6 @@ impl App {
       .await?;
 
     self.core_command_tx = Some(core_command_tx);
-
-    tokio::spawn(async move {
-      loop {
-        match event_receiver.try_recv() {
-          Ok(msg) => log::info!("{:?}", msg),
-          Err(e) => match e {
-            tokio::sync::mpsc::error::TryRecvError::Empty => {
-              sleep(std::time::Duration::from_micros(200)).await;
-            },
-            tokio::sync::mpsc::error::TryRecvError::Disconnected => {
-              log::warn!("Event rx disconnected.");
-              break;
-            },
-          },
-        }
-      }
-    });
 
     // This forwards messages from Core to App
     let action_tx_clone = self.action_tx.clone();
@@ -306,9 +285,15 @@ impl App {
       }
       while let Ok(action) = self.action_rx.try_recv() {
         let action_clone = action.clone();
+        let action_clone_log = action.clone();
+
+        if action_clone_log != Action::Tick && action_clone_log != Action::Render {
+          log::info!("{action:?}");
+        }
+
         match action {
           Action::Tick => {
-            // log::info!("Tick.");
+            log::info!("Tick.");
           },
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
@@ -368,11 +353,8 @@ impl App {
           },
           Action::GenerateReport(core_id) => {
             let mut db = self.database.try_lock()?;
-            match db.get_statistics(&core_id) {
-              Ok(report) => {
-                action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?
-              },
-              Err(e) => log::warn!("Report generation error: {:?}", e),
+            if let Ok(report) = db.get_statistics(&core_id) {
+              action_tx.send(Action::ScreenUpdate(ScreenUpdate::Report(report)))?;
             }
           },
           _ => {},

@@ -39,20 +39,22 @@ pub fn generate_petname() -> String {
   Petnames::default().generate_one(2, "-")
 }
 
-pub fn time_ago(input_time: DateTime<Utc>) -> String {
-  let now = Utc::now();
-  let duration = now.signed_duration_since(input_time);
+pub fn duration_to_readable(duration: &Duration) -> String {
   if duration.num_seconds() < 60 {
     "Just now".to_string()
   } else if duration.num_minutes() < 60 {
-    format!("{}m ago", duration.num_minutes())
+    format!("{}m {}s", duration.num_minutes(), duration.num_seconds() % 60)
   } else if duration.num_hours() < 24 {
-    format!("{}h ago", duration.num_hours())
-  } else if duration.num_days() == 1 {
-    "1 day ago".to_string()
-  } else if duration.num_weeks() == 1 {
-    "1 week ago".to_string()
+    format!("{}h {}m", duration.num_hours(), duration.num_minutes() % 60)
+  } else if duration.num_days() < 7 {
+    format!("{}d {}h", duration.num_days(), duration.num_hours() % 24)
   } else {
-    format!("{} days ago", duration.num_days())
+    format!("{}w {}d", duration.num_weeks(), duration.num_days() % 7)
   }
+}
+
+pub fn time_ago(input_time: DateTime<Utc>) -> String {
+  let now = Utc::now();
+  let duration = now.signed_duration_since(input_time);
+  duration_to_readable(&duration) + " ago"
 }

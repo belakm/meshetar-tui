@@ -78,7 +78,7 @@ impl Portfolio {
     time_is_live: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
     // Determine the position_id & associated Option<Position> related to input SignalEvent
-    let position_id = determine_position_id(core_id, &signal.pair);
+    let position_id = determine_position_id(&core_id, &signal.pair);
     let position = { self.database.lock().await.get_open_position(&position_id)? };
     // If signal is advising to open a new Position rather than close one, check we have cash
     if position.is_none() && self.no_cash_to_enter_new_position(core_id).await? {
@@ -134,7 +134,7 @@ impl Portfolio {
     live_trading: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
     // Determine PositionId associated with the SignalForceExit
-    let position_id = determine_position_id(core_id, &signal.asset);
+    let position_id = determine_position_id(&core_id, &signal.asset);
 
     // Retrieve Option<Position> associated with the PositionId
     let position = match self.database.lock().await.get_open_position(&position_id)? {
@@ -167,7 +167,7 @@ impl Portfolio {
     market: MarketEvent,
   ) -> Result<Option<PositionUpdate>, PortfolioError> {
     // Determine the position_id associated to the input MarketEvent
-    let position_id = determine_position_id(core_id, &market.asset);
+    let position_id = determine_position_id(&core_id, &market.asset);
     let mut database = self.database.lock().await;
     // Update Position if Portfolio has an open Position for that Symbol-Exchange combination
     if let Some(mut position) = database.get_open_position(&position_id)? {
@@ -190,7 +190,7 @@ impl Portfolio {
     let mut generated_events: Vec<Event> = Vec::with_capacity(2);
     let mut database = self.database.lock().await;
     let mut balance = database.get_balance(core_id)?;
-    let position_id = determine_position_id(core_id, &fill.asset);
+    let position_id = determine_position_id(&core_id, &fill.asset);
     balance.time = fill.time;
     match database.remove_position(&position_id)? {
       Some(mut position) => {

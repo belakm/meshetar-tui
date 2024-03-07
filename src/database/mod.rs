@@ -4,6 +4,7 @@ pub mod sqlite;
 use self::{error::DatabaseError, sqlite::DB_POOL};
 use crate::{
   assets::{Candle, Pair},
+  components::list::LabelValueItem,
   portfolio::{
     account::Account,
     balance::{
@@ -12,6 +13,7 @@ use crate::{
     position::{determine_position_id, Position, PositionId},
   },
   statistic::TradingSummary,
+  utils::formatting::duration_to_readable,
 };
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -204,16 +206,16 @@ impl Database {
 
   pub fn get_open_positions(
     &mut self,
-    core_id: Uuid,
-    assets: Vec<Pair>,
+    core_id: &Uuid,
+    pairs: Vec<Pair>,
   ) -> Result<Vec<Position>, DatabaseError> {
     Ok(
-      assets
+      pairs
         .into_iter()
-        .filter_map(|asset| {
+        .filter_map(|pair| {
           self
             .open_positions
-            .get(&determine_position_id(core_id, &asset))
+            .get(&determine_position_id(core_id, &pair))
             .map(Position::clone)
         })
         .collect(),
@@ -319,6 +321,30 @@ impl Database {
   ) -> Result<(), DatabaseError> {
     self.statistics.insert(core_id, statistic);
     Ok(())
+  }
+
+  pub async fn generate_short_report(
+    &mut self,
+    core_id: &Uuid,
+    pair: &Pair,
+  ) -> Result<Vec<LabelValueItem<String>>, DatabaseError> {
+    let duration = Utc::now() - self.statistics[core_id].starting_time;
+    let trades = self.get_open_positions(core_id, vec![pair.clone().to_owned()]);
+    let n_trades = {
+      if let Ok(trades) = trades {
+        trades.len()
+      } else {
+        0
+      }
+    };
+    let rows: Vec<LabelValueItem<String>> = vec![
+      LabelValueItem::new(
+        "Duration".to_string(),
+        format!("{}", duration_to_readable(&duration)),
+      ),
+      LabelValueItem::new("Trades".to_string(), n_trades.to_string()),
+    ];
+    Ok(rows)
   }
 
   pub fn get_statistics(

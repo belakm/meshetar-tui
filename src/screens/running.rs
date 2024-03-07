@@ -31,6 +31,7 @@ pub struct Running {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
   mode: RunningMode,
+  stats: Option<TradingSummary>,
   core_id: Uuid,
   short_report_list: Option<List<LabelValueItem<String>>>,
 }
@@ -74,7 +75,7 @@ impl Screen for Running {
             self.short_report_list = Some(list)
           }
           let _ = self.short_report_list.as_mut().is_some_and(|list| {
-            list.update_items(report.generate_short_report());
+            list.update_items(report);
             true
           });
         },
