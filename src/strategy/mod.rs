@@ -119,7 +119,7 @@ impl Strategy {
       let pyscript = include_str!("../../models/run_model.py");
       let args =
         (candle.open_time.to_rfc3339(), self.pair.to_string(), self.model_name.clone());
-      let model_output = "hold".to_string(); // run_candle(pyscript, args)?;
+      let model_output = run_candle(pyscript, args)?;
       let signals = generate_signals_map(&model_output);
       if signals.len() == 0 {
         return Ok(None);

@@ -16,11 +16,11 @@ def suppress_output():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
 
-def run_test(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
-    suppress_output()
-    return "hold"
-
 def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
+    from random import choices
+    return choices(["hold", "buy", "sell"], [0.6, 0.2, 0.2])[0]
+
+def run2(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     # Comment out the warning silencers below when developing:
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
