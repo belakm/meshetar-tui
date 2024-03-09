@@ -30,12 +30,12 @@ impl Execution {
   pub fn new(exchange_fee: f64) -> Self {
     Execution { exchange_fee }
   }
-  pub fn generate_fill(
+  pub async fn generate_fill(
     &self,
     order: &OrderEvent,
-    live_time: bool,
+    is_live_run: bool,
   ) -> Result<FillEvent, TraderError> {
-    let fill_time = if live_time { Utc::now() } else { order.time };
+    let fill_time = if is_live_run { Utc::now() } else { order.time };
     let fill_event = FillEvent::builder()
       .time(fill_time)
       .asset(order.pair.clone())

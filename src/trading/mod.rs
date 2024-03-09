@@ -53,14 +53,12 @@ impl Trader {
   }
   pub async fn run(&mut self) -> Result<(), TraderError> {
     let _ = self.market_feed.run().await?;
-    let _ = tokio::time::sleep(std::time::Duration::from_micros(200)).await;
-    // TODO: SUS - find a more elegant way
-    let mut backtest_stats_initialized = false;
+    let _ = tokio::time::sleep(Duration::from_micros(200)).await;
 
-    loop {
+    'trader_loop: loop {
       while let Some(command) = self.receive_remote_command() {
         match command {
-          Command::Terminate(_) => break,
+          Command::Terminate(_) => break 'trader_loop,
           Command::ExitPosition(asset) => {
             self
               .event_queue
@@ -165,7 +163,7 @@ impl Trader {
             }
           },
           Event::Order(order) => {
-            let fill = self.execution.generate_fill(&order, self.trading_is_live)?;
+            let fill = self.execution.generate_fill(&order, self.trading_is_live).await?;
             self.event_transmitter.send(Event::Fill(fill.clone()));
             self.event_queue.push_back(Event::Fill(fill));
           },

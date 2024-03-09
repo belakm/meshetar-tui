@@ -55,9 +55,9 @@ impl Screen for Report {
       },
       Action::ScreenUpdate(update) => match update {
         ScreenUpdate::Report(report) => {
-          let mut list = List::default();
-          //list.update_items(report.g());
-          self.short_report_list = Some(list)
+          // let mut list = List::default();
+          // list.update_items(report.g());
+          // self.short_report_list = Some(list)
         },
         _ => {},
       },
@@ -85,9 +85,9 @@ impl Screen for Report {
       content_layout[0],
     );
 
-    if let Some(short_report_list) = &mut self.short_report_list {
-      short_report_list.draw(f, content_layout[1])?;
-    }
+    // if let Some(short_report_list) = &mut self.short_report_list {
+    //   short_report_list.draw(f, content_layout[1])?;
+    // }
     f.render_widget(button("Back", true), button_layout[1]);
     Ok(())
   }

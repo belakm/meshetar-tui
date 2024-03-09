@@ -1,3 +1,4 @@
+use super::{error::AssetError, Candle, MarketEvent, MarketEventDetail, Pair};
 use crate::utils::{binance_client::BINANCE_WSS_BASE_URL, serde_utils::f64_from_string};
 use binance_spot_connector_rust::{
   market::klines::KlineInterval, market_stream::kline::KlineStream,
@@ -6,10 +7,8 @@ use binance_spot_connector_rust::{
 use chrono::{TimeZone, Utc};
 use futures::{StreamExt, TryFutureExt};
 use serde::Deserialize;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::mpsc::{self, error::SendError, UnboundedReceiver};
 use tracing::{info, warn};
-
-use super::{error::AssetError, Candle, MarketEvent, MarketEventDetail, Pair};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize)]
@@ -80,13 +79,17 @@ pub async fn new_ticker(
             serde_json::from_str(&string_data);
           match raw_asset_parse {
             Ok(new_kline) => {
-              match tx.send(MarketEvent {
+              if let Err(e) = tx.send(MarketEvent {
                 time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
                 asset: pair,
                 detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
               }) {
-                Err(e) => log::error!("{}", e),
-                _ => {},
+                match e {
+                  SendError(MarketEvent) => break,
+                  _ => {
+                    log::error!("Mystery market feed error: {}", e);
+                  },
+                }
               };
             },
             Err(e) => {
