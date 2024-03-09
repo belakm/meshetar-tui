@@ -85,9 +85,13 @@ static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
 };
 
 impl App {
-  async fn new_run(&mut self, core_configuration: CoreConfiguration) -> Result<Uuid> {
+  async fn new_run(
+    &mut self,
+    core_configuration: CoreConfiguration,
+  ) -> Result<(Uuid, Pair)> {
     let mut traders = Vec::new();
     let core_id = Uuid::new_v4();
+    let pair = core_configuration.pair.clone();
     let (event_transmitter, event_receiver) = mpsc::unbounded_channel();
     let event_transmitter = EventTx::new(event_transmitter);
     let (core_command_tx, core_command_rx) = mpsc::channel::<Command>(20);
@@ -133,14 +137,8 @@ impl App {
       .database(self.database.clone())
       .statistics_config(statistic_config)
       .n_days_history_fetch(core_configuration.n_days_to_fetch as i64)
+      .is_backtest(!core_configuration.run_live)
       .build()?;
-
-    self
-      .portfolio
-      .lock()
-      .await
-      .init_core_in_db(core_id, core_configuration.starting_equity)
-      .await?;
 
     self.core_command_tx = Some(core_command_tx);
 
@@ -162,7 +160,7 @@ impl App {
       let _ = action_tx.send(Action::CoreMessage(CoreMessage::Finished(core_id)));
     });
 
-    Ok(core_id)
+    Ok((core_id, pair))
   }
 
   pub async fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
@@ -217,13 +215,9 @@ impl App {
         self.action_tx.send(Action::GenerateReport(core_id))?;
         screen
       },
-      ScreenId::RUNNING(core_id) => {
-        let mut running = Running::new(core_id);
+      ScreenId::RUNNING((core_id, pair)) => {
+        let mut running = Running::new(core_id, pair);
         running.set_mode(RunningMode::RUNNING);
-        Box::new(running)
-      },
-      ScreenId::BACKTEST(core_id) => {
-        let running = Running::new(core_id);
         Box::new(running)
       },
       ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
@@ -324,8 +318,8 @@ impl App {
           },
           Action::CoreCommand(command) => match command {
             Command::Start(core_configuration) => {
-              let core_id = self.new_run(core_configuration).await?;
-              let _ = self.navigate(ScreenId::RUNNING(core_id))?;
+              let (core_id, pair) = self.new_run(core_configuration).await?;
+              let _ = self.navigate(ScreenId::RUNNING((core_id, pair)))?;
             },
             _ => {
               if let Some(tx) = &self.core_command_tx {
@@ -350,6 +344,12 @@ impl App {
                 },
               }
             });
+          },
+          Action::GenerateRunOverview(core_id, pair) => {
+            let mut db = self.database.try_lock()?;
+            if let Ok(report) = db.generate_run_overview(&core_id, &pair) {
+              action_tx.send(Action::ScreenUpdate(ScreenUpdate::Running(report)))?;
+            }
           },
           Action::GenerateReport(core_id) => {
             let mut db = self.database.try_lock()?;

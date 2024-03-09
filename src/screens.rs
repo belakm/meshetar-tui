@@ -1,5 +1,6 @@
 use crate::{
   action::Action,
+  assets::Pair,
   config::Config,
   tui::{Event, Frame},
 };
@@ -26,8 +27,7 @@ pub enum ScreenId {
   REPORT(Uuid),
   SESSIONS,
   RUNCONFIG,
-  RUNNING(Uuid),
-  BACKTEST(Uuid),
+  RUNNING((Uuid, Pair)),
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

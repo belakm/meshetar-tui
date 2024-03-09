@@ -56,7 +56,7 @@ impl Screen for Report {
       Action::ScreenUpdate(update) => match update {
         ScreenUpdate::Report(report) => {
           let mut list = List::default();
-          list.update_items(report.generate_short_report());
+          //list.update_items(report.g());
           self.short_report_list = Some(list)
         },
         _ => {},

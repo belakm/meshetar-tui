@@ -20,15 +20,6 @@ use std::{collections::HashMap, time::Duration};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Default, Serialize, Clone, PartialEq, Debug)]
-pub struct CoreConfiguration {
-  pub run_live: bool,
-  pub n_days_to_fetch: u64,
-  pub starting_equity: f64,
-  pub backtest_last_n_candles: usize,
-  pub exchange_fee: f64,
-}
-
 #[derive(Default, PartialEq, EnumIter, EnumCount, Clone)]
 enum SelectedField {
   #[default]

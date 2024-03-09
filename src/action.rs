@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{
   assets::Pair,
+  components::list::LabelValueItem,
   core::{Command, CoreMessage},
   screens::ScreenId,
   statistic::TradingSummary,
@@ -17,7 +18,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ScreenUpdate {
   Report(TradingSummary),
-  Running(TradingSummary),
+  Running(Vec<LabelValueItem<String>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -39,6 +40,7 @@ pub enum Action {
   CoreMessage(CoreMessage),
   GenerateModel(Pair),
   GenerateReport(Uuid),
+  GenerateRunOverview(Uuid, Pair),
   ScreenUpdate(ScreenUpdate),
 }
 

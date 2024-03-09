@@ -15,7 +15,7 @@ use crate::{
   statistic::TradingSummary,
   utils::formatting::duration_to_readable,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -323,26 +323,39 @@ impl Database {
     Ok(())
   }
 
-  pub async fn generate_short_report(
+  pub fn generate_run_overview(
     &mut self,
     core_id: &Uuid,
     pair: &Pair,
   ) -> Result<Vec<LabelValueItem<String>>, DatabaseError> {
-    let duration = Utc::now() - self.statistics[core_id].starting_time;
-    let trades = self.get_open_positions(core_id, vec![pair.clone().to_owned()]);
-    let n_trades = {
-      if let Ok(trades) = trades {
+    let duration = if let Some(stats) = self.statistics.get(core_id) {
+      Utc::now() - stats.starting_time
+    } else {
+      Duration::nanoseconds(0)
+    };
+    let open_trades = self.get_open_positions(core_id, vec![pair.clone().to_owned()]);
+    let closed_positions = self.get_exited_positions(core_id.clone().to_owned());
+    let n_closed_positions = {
+      if let Ok(trades) = closed_positions {
         trades.len()
       } else {
         0
       }
     };
+
+    let balance = if let Ok(balance) = self.get_balance(core_id.clone().to_owned()) {
+      balance.total.to_string()
+    } else {
+      "No balance available.".to_string()
+    };
     let rows: Vec<LabelValueItem<String>> = vec![
+      LabelValueItem::new("Pair".to_string(), pair.to_string()),
       LabelValueItem::new(
         "Duration".to_string(),
         format!("{}", duration_to_readable(&duration)),
       ),
-      LabelValueItem::new("Trades".to_string(), n_trades.to_string()),
+      LabelValueItem::new("Balance".to_string(), balance),
+      LabelValueItem::new("Trades".to_string(), (n_closed_positions).to_string()),
     ];
     Ok(rows)
   }

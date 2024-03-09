@@ -45,6 +45,7 @@ pub struct Core {
   statistics_config: StatisticConfig,
   traders: Vec<Trader>,
   n_days_history_fetch: i64,
+  is_backtest: bool,
 }
 
 impl Core {
@@ -61,17 +62,25 @@ impl Core {
       loop {
         tokio::select! {
             _ = fetching_stopped.recv() => {
-                let _ = self
-                .portfolio
-                .lock()
-                .await
-                .init_core_in_db(self.id, self.statistics_config.starting_equity)
-                .await;
                 break;
             }
         }
       }
     }
+    let starting_time = if self.is_backtest {
+      // TODO: implement proper lookup of when BACKTEST started
+      Utc::now()
+    } else {
+      Utc::now()
+    };
+
+    let _ = self
+      .portfolio
+      .lock()
+      .await
+      .init_core_in_db(self.id, self.statistics_config.starting_equity, starting_time)
+      .await;
+
     let mut trading_stopped = self.run_traders().await;
     loop {
       tokio::select! {
@@ -248,19 +257,20 @@ impl Core {
     }
 
     let mut database = self.database.lock().await;
-    let final_balance = database.get_balance(self.id).ok();
-    let min_start_time = stats_per_market
-      .iter()
-      .map(|(_, stats)| stats)
-      .min_by(|stats1, stats2| stats1.starting_time.cmp(&stats2.starting_time))
-      .map(|stats| stats.starting_time)
-      .to_owned()
-      .unwrap_or(Utc::now());
-    warn!("TRADING SINCE: {}", min_start_time);
-    let mut statistics_summary =
-      TradingSummary::init(self.statistics_config, Some(min_start_time));
-    warn!("FINAL BALANCE: {:?}", final_balance);
 
+    let final_balance = database.get_balance(self.id).ok();
+    let min_start_time = if self.is_backtest {
+      stats_per_market
+        .iter()
+        .map(|(_, stats)| stats)
+        .min_by(|stats1, stats2| stats1.starting_time.cmp(&stats2.starting_time))
+        .map(|stats| stats.starting_time)
+        .to_owned()
+        .unwrap_or(Utc::now())
+    } else {
+      Utc::now()
+    };
+    let mut statistics_summary = database.get_statistics(&core_id)?;
     // Generate average statistics across all markets using session's exited Positions
     let exited_positions = database.get_exited_positions(self.id)?;
     statistics_summary.generate_summary(&exited_positions);
@@ -293,6 +303,7 @@ pub struct CoreBuilder {
   traders: Option<Vec<Trader>>,
   statistics_config: Option<StatisticConfig>,
   n_days_history_fetch: Option<i64>,
+  is_backtest: Option<bool>,
 }
 
 impl CoreBuilder {
@@ -308,6 +319,7 @@ impl CoreBuilder {
       traders: None,
       statistics_config: None,
       n_days_history_fetch: None,
+      is_backtest: None,
     }
   }
   pub fn id(self, id: Uuid) -> Self {
@@ -340,6 +352,9 @@ impl CoreBuilder {
   pub fn n_days_history_fetch(self, value: i64) -> Self {
     CoreBuilder { n_days_history_fetch: Some(value), ..self }
   }
+  pub fn is_backtest(self, value: bool) -> Self {
+    CoreBuilder { is_backtest: Some(value), ..self }
+  }
   pub fn build(self) -> Result<Core, CoreError> {
     let binance_client =
       self.binance_client.ok_or(CoreError::BuilderIncomplete("binance client"))?;
@@ -365,6 +380,7 @@ impl CoreBuilder {
       n_days_history_fetch: self
         .n_days_history_fetch
         .ok_or(CoreError::BuilderIncomplete("n_days_history_fetch"))?,
+      is_backtest: self.is_backtest.ok_or(CoreError::BuilderIncomplete("is_backtest"))?,
     };
     Ok(core)
   }

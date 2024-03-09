@@ -33,12 +33,13 @@ pub struct Running {
   mode: RunningMode,
   stats: Option<TradingSummary>,
   core_id: Uuid,
+  pair: Pair,
   short_report_list: Option<List<LabelValueItem<String>>>,
 }
 
 impl Running {
-  pub fn new(core_id: Uuid) -> Self {
-    Self { core_id, ..Self::default() }
+  pub fn new(core_id: Uuid, pair: Pair) -> Self {
+    Self { core_id, pair, ..Self::default() }
   }
 
   pub fn set_mode(&mut self, mode: RunningMode) {
@@ -65,17 +66,17 @@ impl Screen for Running {
     match action {
       Action::Tick => {
         if let Some(command_tx) = &self.command_tx {
-          command_tx.send(Action::GenerateReport(self.core_id.clone()))?;
+          command_tx.send(Action::GenerateRunOverview(self.core_id, self.pair))?;
         }
       },
       Action::ScreenUpdate(update) => match update {
-        ScreenUpdate::Report(report) => {
+        ScreenUpdate::Running(overview) => {
           if self.short_report_list.is_none() {
             let list = List::default();
             self.short_report_list = Some(list)
           }
           let _ = self.short_report_list.as_mut().is_some_and(|list| {
-            list.update_items(report);
+            list.update_items(overview);
             true
           });
         },

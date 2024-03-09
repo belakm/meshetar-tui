@@ -109,18 +109,6 @@ impl Trader {
       while let Some(event) = self.event_queue.pop_front() {
         match event {
           Event::Market(market_event) => {
-            if let MarketEventDetail::BacktestCandle((candle, _)) = &market_event.detail {
-              if !backtest_stats_initialized {
-                let start_time = candle.open_time;
-                let _ = self
-                  .portfolio
-                  .lock()
-                  .await
-                  .reset_statistics_with_time(self.core_id, start_time)
-                  .await;
-              }
-              backtest_stats_initialized = true;
-            }
             match self.strategy.generate_signal(&market_event).await {
               Ok(Some(signal)) => {
                 self.event_transmitter.send(Event::Signal(signal.clone()));

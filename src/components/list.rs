@@ -5,6 +5,7 @@ use crate::strategy::ModelMetadata;
 use super::{style::default_style, ListDisplay};
 use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use ratatui::{prelude::*, widgets::Paragraph};
+use serde::Serialize;
 
 pub struct List<T: ListDisplay + Clone + Default> {
   items: Vec<T>,
@@ -108,7 +109,7 @@ impl<T: ListDisplay + Clone + Default> Default for List<T> {
   }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Serialize, Debug)]
 pub struct LabelValueItem<T: Display + Clone + Default> {
   label: String,
   value: T,

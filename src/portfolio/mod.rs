@@ -51,14 +51,19 @@ impl Portfolio {
     &self,
     core_id: Uuid,
     starting_cash: f64,
+    starting_time: DateTime<Utc>,
   ) -> Result<(), PortfolioError> {
     let mut db = self.database.lock().await;
     db.set_balance(
       core_id,
       Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
     )?;
-    db.set_statistics(core_id, TradingSummary::init(self.statistic_config, None))
-      .map_err(PortfolioError::RepositoryInteraction)?;
+    db.set_statistics(
+      core_id,
+      TradingSummary::init(self.statistic_config, Some(starting_time)),
+    )
+    .map_err(PortfolioError::RepositoryInteraction)?;
+    log::info!("New core initiated in DB {}", core_id);
     Ok(())
   }
 
@@ -227,33 +232,6 @@ impl Portfolio {
     core_id: &Uuid,
   ) -> Result<TradingSummary, DatabaseError> {
     self.database.lock().await.get_statistics(core_id)
-  }
-
-  pub async fn reset_statistics_with_time(
-    &mut self,
-    core_id: Uuid,
-    starting_time: DateTime<Utc>,
-  ) -> Result<(), PortfolioError> {
-    let mut database = self.database.lock().await;
-    database
-      .set_statistics(
-        core_id,
-        TradingSummary::init(self.statistic_config, Some(starting_time)),
-      )
-      .map_err(PortfolioError::RepositoryInteraction)?;
-    Ok(())
-  }
-
-  pub async fn init_statistics_for_core(
-    &self,
-    core_id: Uuid,
-    statistic_config: StatisticConfig,
-  ) -> Result<(), PortfolioError> {
-    let mut database = self.database.lock().await;
-    database
-      .set_statistics(core_id, TradingSummary::init(statistic_config, None))
-      .map_err(PortfolioError::RepositoryInteraction)?;
-    Ok(())
   }
 }
 
