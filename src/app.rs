@@ -1,7 +1,11 @@
 use chrono::{DateTime, Utc};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{prelude::Rect, widgets::Clear};
+use ratatui::{
+  layout::{Constraint, Layout, Margin},
+  prelude::Rect,
+  widgets::Clear,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -14,7 +18,7 @@ use uuid::Uuid;
 use crate::{
   action::{Action, MoveDirection, ScreenUpdate},
   assets::{error::AssetError, MarketFeed, Pair},
-  components::style::stylized_block,
+  components::style::{draw_header, logo, outer_container_block, stylized_block},
   config::Config,
   core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
@@ -38,7 +42,7 @@ use crate::{
   statistic::{StatisticConfig, TradingSummary},
   strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
-  tui::{self, Tui},
+  tui::{self, Frame, Tui},
   utils::binance_client::{self, BinanceClient, BinanceClientError},
 };
 
@@ -294,29 +298,47 @@ impl App {
         }
 
         match action {
-          Action::Tick => {},
+          Action::Tick => {
+            if let Err(e) = self.exchange_book.sync().await {
+              log::error!("{:?}", e)
+            }
+          },
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
           Action::Resize(w, h) => {
             self.tui.resize(Rect::new(0, 0, w, h))?;
             self.tui.draw(|f| {
-              let r = self.screen.draw(f, f.size());
+              let area = f.size();
+              f.render_widget(outer_container_block(), area);
+              let layout =
+                Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
+                  .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
+
+              let r = self.screen.draw(f, layout[1]);
               if let Err(e) = r {
                 action_tx
                   .send(Action::Error(format!("Failed to draw: {:?}", e)))
                   .unwrap();
               }
+              let _ = draw_header(f, layout[0], self.exchange_book.last_balance_info());
             })?;
           },
           Action::Render => {
             self.tui.draw(|f| {
-              let r = self.screen.draw(f, f.size());
+              let area = f.size();
+              f.render_widget(outer_container_block(), area);
+              let layout =
+                Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
+                  .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
+
+              let r = self.screen.draw(f, layout[1]);
               if let Err(e) = r {
                 action_tx
                   .send(Action::Error(format!("Failed to draw: {:?}", e)))
                   .unwrap();
               }
+              let _ = draw_header(f, layout[0], self.exchange_book.last_balance_info());
             })?;
           },
           Action::Navigate(screen) => {

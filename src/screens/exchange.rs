@@ -68,7 +68,6 @@ impl Screen for Exchange {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(outer_container_block(), area);
     let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
     let (header_area, content_area) = default_layout(inner_area);
     f.render_widget(logo(), header_area);

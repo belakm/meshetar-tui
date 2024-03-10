@@ -9,6 +9,8 @@ use crate::{
     formatting::timestamp_to_dt,
   },
 };
+use binance_spot_connector_rust::http::request::RequestBuilder;
+use binance_spot_connector_rust::http::Method;
 use binance_spot_connector_rust::{
   market::klines::KlineInterval, wallet::user_asset::UserAsset,
 };
@@ -37,11 +39,11 @@ pub async fn fetch_candles(
                 let data = binance_client.client
                     .send(request)
                     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
+                    ?;
                 klines = data
                     .into_body_str()
                     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
+                    ?;
             };
 
             let new_candles = parse_binance_klines(&klines).await?;
@@ -87,53 +89,78 @@ pub struct ExchangeAssetBalance {
 pub struct ExchangeBalance {
   btc_valuation: f64,
   balances: Vec<ExchangeAssetBalance>,
+  created_at: DateTime<Utc>,
 }
 
 impl ExchangeBalance {
   pub fn new(balances: Vec<ExchangeAssetBalance>) -> Self {
     let btc_valuation =
       balances.iter().fold(0f64, |acc, balance| acc + balance.btc_valuation);
-    Self { btc_valuation, balances }
+    Self { btc_valuation, balances, created_at: Utc::now() }
+  }
+  pub fn btc_valuation(&self) -> f64 {
+    self.btc_valuation
   }
 }
 
 async fn get_exchange_balances(
   binance_client: BinanceClient,
 ) -> Result<Vec<ExchangeAssetBalance>, ExchangeError> {
+  let request = binance_spot_connector_rust::wallet::user_asset()
+    .need_btc_valuation(true)
+    .asset("BNB");
+
   let request =
-    binance_spot_connector_rust::wallet::user_asset().need_btc_valuation(true);
+    RequestBuilder::new(Method::Post, "/sapi/v3/asset/getUserAsset").params(vec![
+      ("needBtcValuation", "true"),
+      ("timestamp", &Utc::now().timestamp().to_string()),
+    ]);
+
   let data = binance_client
     .client
     .send(request)
-    .await
     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
   let balances = data
     .into_body_str()
-    .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))
-    .await?;
+    .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
 
   let balances: Vec<ExchangeAssetBalance> = serde_json::from_str(&balances)?;
   Ok(balances)
 }
 
 pub struct ExchangeBook {
-  last_balance_sync: DateTime<Utc>,
+  last_balance: Option<ExchangeBalance>,
   db: Arc<Mutex<Database>>,
   exchange_client: BinanceClient,
 }
 
 impl ExchangeBook {
   pub fn new(db: Arc<Mutex<Database>>, exchange_client: BinanceClient) -> Self {
-    Self { db, exchange_client, last_balance_sync: DateTime::<Utc>::default() }
+    Self { db, exchange_client, last_balance: None }
   }
-  pub async fn sync(&self) -> Result<(), ExchangeError> {
-    if self.last_balance_sync + Duration::seconds(5) < Utc::now() {
+  pub async fn sync(&mut self) -> Result<(), ExchangeError> {
+    let sync = if let Some(last_balance) = self.last_balance.clone() {
+      last_balance.created_at + Duration::seconds(5) < Utc::now()
+    } else {
+      self.last_balance.is_none()
+    };
+    if sync {
       let balances = get_exchange_balances(self.exchange_client.clone()).await?;
       let mut db = self.db.lock().await;
-      db.set_exchange_balance(ExchangeBalance::new(balances));
+      let exchange_balance = ExchangeBalance::new(balances);
+      db.set_exchange_balance(exchange_balance.clone());
+      self.last_balance = Some(exchange_balance);
       Ok(())
     } else {
       Ok(())
+    }
+  }
+
+  pub fn last_balance_info(&self) -> (f64, DateTime<Utc>) {
+    if let Some(exchange_balance) = self.last_balance.clone() {
+      (exchange_balance.btc_valuation, exchange_balance.created_at)
+    } else {
+      (0.0, Utc::now())
     }
   }
 }

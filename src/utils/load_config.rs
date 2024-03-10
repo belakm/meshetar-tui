@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct Config {
   pub binance_api_key: String,
   pub binance_api_secret: String,
