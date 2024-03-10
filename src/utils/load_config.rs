@@ -4,6 +4,7 @@ use thiserror::Error;
 pub struct Config {
   pub binance_api_key: String,
   pub binance_api_secret: String,
+  pub binance_url: String,
 }
 
 #[derive(Error, Debug)]

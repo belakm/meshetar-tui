@@ -1,2 +1,5 @@
 binance_api_key = "YOUR_API_KEY"
 binance_api_secret = "YOUR_API_SECRET"
+
+# for Testnet use https://testnet.binance.vision
+binance_url = "https://api.binance.com"

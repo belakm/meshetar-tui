@@ -1,7 +1,3 @@
-const STARTING_EQUITY: f64 = 1000.0;
-const EXCHANGE_FEE: f64 = 0.0;
-const DEFAULT_ASSET: Pair = Pair::BTCUSDT;
-
 use chrono::{DateTime, Utc};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -23,11 +19,13 @@ use crate::{
   core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
   events::EventTx,
+  exchange::{error::ExchangeError, ExchangeBook},
   mode::Mode,
   portfolio::{
     allocator::Allocator, error::PortfolioError, risk::RiskEvaluator, Portfolio,
   },
   screens::{
+    exchange::Exchange,
     home::Home,
     model_config::ModelConfig,
     models::Models,
@@ -41,7 +39,7 @@ use crate::{
   strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
   tui::{self, Tui},
-  utils::binance_client::{BinanceClient, BinanceClientError},
+  utils::binance_client::{self, BinanceClient, BinanceClientError},
 };
 
 #[derive(Error, Debug)]
@@ -58,6 +56,8 @@ enum MainError {
   BinanceClient(#[from] BinanceClientError),
   #[error("Assets: {0}")]
   Asset(#[from] AssetError),
+  #[error("Exchange: {0}")]
+  Exchange(#[from] ExchangeError),
 }
 
 pub struct App {
@@ -74,6 +74,8 @@ pub struct App {
   portfolio: Arc<Mutex<Portfolio>>,
   core: Option<Core>,
   core_command_tx: Option<mpsc::Sender<Command>>,
+  binance_client: BinanceClient,
+  exchange_book: ExchangeBook,
   tui: Tui,
 }
 
@@ -128,7 +130,7 @@ impl App {
 
     let mut core = Core::builder()
       .id(core_id)
-      .binance_client(BinanceClient::new().await.map_err(MainError::from)?)
+      .binance_client(self.binance_client.clone())
       .portfolio(self.portfolio.clone())
       .command_rx(core_command_rx)
       .message_tx(core_message_tx)
@@ -181,10 +183,13 @@ impl App {
         .allocation_manager(Allocator { default_order_value: 100.0 })
         .risk_manager(RiskEvaluator {})
         .statistic_config(STATISTIC_CONFIG)
-        .assets(vec![DEFAULT_ASSET])
         .build()
         .await?,
     ));
+
+    let binance_client = BinanceClient::new().await.map_err(MainError::from)?;
+
+    let exchange_book = ExchangeBook::new(database.clone(), binance_client.clone());
 
     Ok(Self {
       tick_rate,
@@ -200,6 +205,8 @@ impl App {
       database,
       portfolio,
       core: None,
+      binance_client,
+      exchange_book,
       core_command_tx: None,
     })
   }
@@ -221,6 +228,7 @@ impl App {
         Box::new(running)
       },
       ScreenId::RUNCONFIG => Box::new(RunConfig::new()),
+      ScreenId::EXCHANGE => Box::new(Exchange::new()),
     };
     screen.register_action_handler(self.action_tx.clone())?;
     screen.register_config_handler(self.config.clone())?;
@@ -286,9 +294,7 @@ impl App {
         }
 
         match action {
-          Action::Tick => {
-            log::info!("Tick.");
-          },
+          Action::Tick => {},
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
@@ -332,6 +338,7 @@ impl App {
               self.navigate(ScreenId::REPORT(core_id))?;
             },
           },
+
           Action::GenerateModel(pair) => {
             log::warn!("Starting new model generation");
             tokio::spawn(async move {

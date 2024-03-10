@@ -266,7 +266,6 @@ pub struct PortfolioBuilder {
   allocation_manager: Option<Allocator>,
   risk_manager: Option<RiskEvaluator>,
   statistic_config: Option<StatisticConfig>,
-  assets: Option<Vec<Pair>>,
 }
 
 impl PortfolioBuilder {
@@ -276,7 +275,6 @@ impl PortfolioBuilder {
       allocation_manager: None,
       risk_manager: None,
       statistic_config: None,
-      assets: None,
     }
   }
   pub fn database(self, database: Arc<Mutex<Database>>) -> Self {
@@ -290,9 +288,6 @@ impl PortfolioBuilder {
   }
   pub fn statistic_config(self, value: StatisticConfig) -> Self {
     Self { statistic_config: Some(value), ..self }
-  }
-  pub fn assets(self, value: Vec<Pair>) -> Self {
-    Self { assets: Some(value), ..self }
   }
   pub async fn build(self) -> Result<Portfolio, PortfolioError> {
     let portfolio = Portfolio {

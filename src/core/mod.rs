@@ -1,8 +1,9 @@
 pub mod error;
 
 use crate::{
-  assets::{fetch_candles, Pair},
+  assets::Pair,
   database::Database,
+  exchange::fetch_candles,
   portfolio::Portfolio,
   screens::run_config::CoreConfiguration,
   statistic::{StatisticConfig, TradingSummary},
@@ -187,7 +188,6 @@ impl Core {
   }
   async fn terminate_traders(&self, message: String) {
     self.exit_all_positions().await;
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     for (market, command_transmitter) in self.command_transmitters.iter() {
       if command_transmitter.send(Command::Terminate(message.clone())).await.is_err() {
         error!(why = "dropped receiver", asset = &*format!("{:?}", market),);

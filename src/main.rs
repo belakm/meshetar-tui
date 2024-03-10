@@ -11,6 +11,7 @@ pub mod config;
 pub mod core;
 pub mod database;
 pub mod events;
+pub mod exchange;
 pub mod mode;
 pub mod portfolio;
 pub mod screens;
@@ -20,14 +21,13 @@ pub mod trading;
 pub mod tui;
 pub mod utils;
 
-use clap::Parser;
-use cli::Cli;
-use color_eyre::eyre::Result;
-
 use crate::{
   app::App,
   utils::{initialize_logging, initialize_panic_handler, version},
 };
+use clap::Parser;
+use cli::Cli;
+use color_eyre::eyre::Result;
 
 async fn tokio_main() -> Result<()> {
   initialize_logging()?;

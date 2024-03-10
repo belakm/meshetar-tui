@@ -11,6 +11,7 @@ use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
+pub mod exchange;
 pub mod home;
 pub mod model_config;
 pub mod models;
@@ -28,6 +29,7 @@ pub enum ScreenId {
   SESSIONS,
   RUNCONFIG,
   RUNNING((Uuid, Pair)),
+  EXCHANGE,
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

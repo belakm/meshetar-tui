@@ -5,11 +5,10 @@ use self::{error::DatabaseError, sqlite::DB_POOL};
 use crate::{
   assets::{Candle, Pair},
   components::list::LabelValueItem,
+  exchange::ExchangeBalance,
   portfolio::{
     account::Account,
-    balance::{
-      Balance, BalanceId, ExchangeBalance, ExchangeBalanceAsset, ExchangeBalanceSheet,
-    },
+    balance::{Balance, BalanceId},
     position::{determine_position_id, Position, PositionId},
   },
   statistic::TradingSummary,
@@ -23,6 +22,7 @@ pub struct Database {
   open_positions: HashMap<PositionId, Position>,
   closed_positions: HashMap<String, Vec<Position>>,
   current_balances: HashMap<BalanceId, Balance>,
+  exchange_balance: ExchangeBalance,
   statistics: HashMap<Uuid, TradingSummary>,
 }
 impl Database {
@@ -33,145 +33,8 @@ impl Database {
       closed_positions: HashMap::new(),
       current_balances: HashMap::new(),
       statistics: HashMap::new(),
+      exchange_balance: ExchangeBalance::new(vec![]),
     })
-  }
-
-  pub async fn set_exchange_balance(
-    &mut self,
-    balance: ExchangeBalance,
-  ) -> Result<(), DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let mut tx = connection.begin().await?;
-    let timestamp: String = DateTime::to_rfc3339(&Utc::now());
-    let balance_sheet: ExchangeBalanceSheet = sqlx::query_as(
-        "INSERT INTO balance_sheets (timestamp, btc_valuation, busd_valuation) VALUES (?1, 0.0, 0.0) RETURNING *",
-    )
-    .bind(timestamp)
-    .fetch_one(connection)
-    .await.map_err(|_| DatabaseError::ReadError)?;
-
-    // Insert snapshot data
-    for balance in balance.balances {
-      sqlx::query(
-                "INSERT INTO balances (asset, free, locked, balance_sheet_id, btc_valuation) 
-                VALUES (
-                    ?1, 
-                    ?2, 
-                    ?3, 
-                    ?4,
-                        CASE WHEN ?1 = 'BTC' THEN ?2 -- get valuation from ticker otherwise default 
-                        ELSE COALESCE((SELECT last_price FROM asset_ticker WHERE symbol = ?5), 0) * ?6
-                        END
-                    )",
-            )
-            .bind(&balance.asset)
-            .bind(&balance.free)
-            .bind(&balance.locked)
-            .bind(&balance_sheet.id)
-            .bind(&format!("{}{}", balance.asset.to_string(), "BTC"))
-            .bind(&balance.free)
-            .execute(tx.as_mut())
-            .await?;
-    }
-
-    sqlx::query(
-      "UPDATE balance_sheets
-            SET btc_valuation = (
-                SELECT SUM(btc_valuation)
-                FROM balances
-                WHERE balance_sheet_id = ?1
-            ),
-            busd_valuation = (
-                SELECT SUM(btc_valuation) * asset_ticker.last_price
-                FROM balances
-                LEFT JOIN asset_ticker ON asset_ticker.symbol = 'BTCBUSD'
-                WHERE balance_sheet_id = ?1
-            )
-            WHERE id = ?1",
-    )
-    .bind(&balance_sheet.id)
-    .execute(tx.as_mut())
-    .await?;
-
-    tx.commit().await?;
-
-    // Commit transaction
-    Ok(())
-  }
-
-  pub async fn get_exchange_balance(&mut self) -> Result<ExchangeBalance, DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let balance_sheet: ExchangeBalanceSheet = sqlx::query_as(
-      "SELECT * FROM balance_sheets WHERE id = (SELECT MAX(id) FROM balance_sheets)",
-    )
-    .fetch_one(connection)
-    .await
-    .map_err(|_| DatabaseError::ReadError)?;
-
-    let query = &format!(
-      "SELECT * 
-            FROM balances
-            WHERE balance_sheet_id = {:?}",
-      &balance_sheet.id
-    );
-    let balances: Vec<ExchangeBalanceAsset> = sqlx::query_as(query)
-      .fetch_all(connection)
-      .await
-      .map_err(|_| DatabaseError::ReadError)?;
-
-    Ok(ExchangeBalance {
-      timestamp: balance_sheet.timestamp,
-      btc_valuation: balance_sheet.btc_valuation,
-      busd_valuation: balance_sheet.busd_valuation,
-      balances,
-    })
-  }
-
-  pub async fn set_account(&mut self, account: Account) -> Result<(), DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    sqlx::query(
-      "INSERT OR REPLACE INTO account (
-            maker_commission,
-            taker_commission,
-            buyer_commission,
-            seller_commission,
-            can_trade,
-            can_withdraw,
-            can_deposit,
-            brokered,
-            require_self_rade_prevention,
-            prevent_sor,
-            update_time,
-            account_type,
-            uid
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-    )
-    .bind(account.maker_commission)
-    .bind(account.taker_commission)
-    .bind(account.buyer_commission)
-    .bind(account.seller_commission)
-    .bind(account.can_trade)
-    .bind(account.can_withdraw)
-    .bind(account.can_deposit)
-    .bind(account.brokered)
-    .bind(account.require_self_rade_prevention)
-    .bind(account.prevent_sor)
-    .bind(account.update_time)
-    .bind(account.account_type.clone())
-    .bind(account.uid)
-    .execute(connection)
-    .await?;
-    Ok(())
-  }
-
-  pub async fn get_account(&mut self, uid: i64) -> Result<Account, DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let account: Account = sqlx::query_as("SELECT * FROM account WHERE uid = $1")
-      .bind(uid)
-      .fetch_one(connection)
-      .await
-      .map_err(|_| DatabaseError::ReadError)?;
-    Ok(account)
   }
 
   pub fn set_balance(
@@ -190,6 +53,14 @@ impl Database {
         core_id
       )),
     )
+  }
+
+  pub fn set_exchange_balance(&mut self, exchange_balance: ExchangeBalance) {
+    self.exchange_balance = exchange_balance;
+  }
+
+  pub fn get_exchange_balance(&mut self) -> ExchangeBalance {
+    self.exchange_balance.clone()
   }
 
   pub fn set_open_position(&mut self, position: Position) -> Result<(), DatabaseError> {
@@ -249,7 +120,6 @@ impl Database {
     position: Position,
   ) -> Result<(), DatabaseError> {
     let exited_positions_key = determine_exited_positions_id(core_id);
-
     match self.closed_positions.get_mut(&exited_positions_key) {
       None => {
         self.closed_positions.insert(exited_positions_key, vec![position]);

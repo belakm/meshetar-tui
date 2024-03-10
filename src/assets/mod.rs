@@ -7,6 +7,7 @@ pub mod error;
 use self::{asset_ticker::KlineEvent, error::AssetError};
 use crate::{
   database::Database,
+  exchange::{error::ExchangeError, BinanceKline},
   strategy::Signal,
   utils::{
     binance_client::BinanceClient,
@@ -196,7 +197,7 @@ impl MarketFeed {
   async fn new_live_feed(
     &self,
     pair: Pair,
-  ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
+  ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, ExchangeError> {
     let ticker = asset_ticker::new_ticker(pair).await?;
     Ok(ticker)
   }
@@ -246,58 +247,4 @@ impl Default for MarketMeta {
   fn default() -> Self {
     Self { close: 100.0, time: Utc::now() }
   }
-}
-
-pub async fn fetch_candles(
-  duration: Duration,
-  asset: Pair,
-  binance_client: Arc<BinanceClient>,
-) -> Result<Vec<Candle>, AssetError> {
-  let mut start_time: i64 = (Utc::now() - duration).timestamp_millis();
-  let mut candles = Vec::<Candle>::new();
-  loop {
-    tokio::select! {
-        _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {
-            info!("Loading candles from: {:?}", timestamp_to_dt(start_time));
-            let request = binance_spot_connector_rust::market::klines(&asset.to_string(), KlineInterval::Minutes1)
-                .start_time(start_time as u64)
-                .limit(1000);
-            let klines;
-            {
-                let data = binance_client.client
-                    .send(request)
-                    .map_err(|e| AssetError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
-                klines = data
-                    .into_body_str()
-                    .map_err(|e| AssetError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
-            };
-
-            let new_candles = parse_binance_klines(&klines).await?;
-            let last_candle = &new_candles.last();
-            if let Some(last_candle) = last_candle {
-                start_time = last_candle.close_time.timestamp_millis();
-                candles.extend(new_candles);// .concat(new_candles);
-            } else {
-                break
-            }
-        }
-    }
-  }
-  info!("Candles fetched: {}", candles.len());
-  Ok(candles)
-}
-
-pub type BinanceKline =
-  (i64, String, String, String, String, String, i64, String, i64, String, String, String);
-
-async fn parse_binance_klines(klines: &String) -> Result<Vec<Candle>, AssetError> {
-  let data: Vec<BinanceKline> = serde_json::from_str(klines)?;
-  let mut new_candles: Vec<Candle> = Vec::new();
-  for candle in data {
-    let new_candle = Candle::from(&candle);
-    new_candles.push(Candle::from(new_candle));
-  }
-  Ok(new_candles)
 }
