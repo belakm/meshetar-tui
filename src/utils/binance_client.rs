@@ -1,12 +1,8 @@
-use crate::utils::load_config::{read_config, Config};
+use super::load_config::ConfigError;
+use crate::utils::load_config::{read_config, ExchangeConfig};
 use binance_spot_connector_rust::{http::Credentials, ureq::BinanceHttpClient};
 use hyper::client::HttpConnector;
 use thiserror::Error;
-
-use super::load_config::ConfigError;
-
-// TODO: Read this from .config/env.toml
-pub const BINANCE_WSS_BASE_URL: &str = "wss://testnet.binance.vision/ws";
 
 #[derive(Clone)]
 pub struct BinanceClient {
@@ -21,12 +17,13 @@ pub enum BinanceClientError {
 
 impl BinanceClient {
   pub async fn new() -> Result<BinanceClient, BinanceClientError> {
-    let config: Config =
+    let config: ExchangeConfig =
       read_config().map_err(|e| BinanceClientError::ConfigOnInit(e))?;
     let credentials =
       Credentials::from_hmac(config.binance_api_key, config.binance_api_secret);
     let client =
-      BinanceHttpClient::with_url(&config.binance_url).credentials(credentials);
+      BinanceHttpClient::with_url(&ExchangeConfig::get_exchange_url(config.use_testnet))
+        .credentials(credentials);
     Ok(BinanceClient { client })
   }
 }

@@ -43,7 +43,10 @@ use crate::{
   strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
   tui::{self, Frame, Tui},
-  utils::binance_client::{self, BinanceClient, BinanceClientError},
+  utils::{
+    binance_client::{self, BinanceClient, BinanceClientError},
+    load_config::{self, read_config, ExchangeConfig},
+  },
 };
 
 #[derive(Error, Debug)]
@@ -81,6 +84,7 @@ pub struct App {
   binance_client: BinanceClient,
   exchange_book: ExchangeBook,
   tui: Tui,
+  use_testnet: bool,
 }
 
 static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
@@ -106,6 +110,7 @@ impl App {
       mpsc::channel::<Command>(20);
     let command_transmitters =
       HashMap::from([(core_configuration.pair, trader_command_transmitter)]);
+
     traders.push(
       Trader::builder()
         .core_id(core_id)
@@ -120,6 +125,7 @@ impl App {
           core_configuration.backtest_last_n_candles,
           core_configuration.pair,
           core_configuration.model_name.clone(),
+          ExchangeConfig::get_exchange_stream_url(self.use_testnet),
         ))
         .strategy(Strategy::new(core_configuration.pair, core_configuration.model_name))
         .execution(Execution::new(core_configuration.exchange_fee))
@@ -192,10 +198,12 @@ impl App {
     ));
 
     let binance_client = BinanceClient::new().await.map_err(MainError::from)?;
-
-    let exchange_book = ExchangeBook::new(database.clone(), binance_client.clone());
+    let use_testnet = read_config()?.use_testnet;
+    let exchange_book =
+      ExchangeBook::new(database.clone(), binance_client.clone(), use_testnet);
 
     Ok(Self {
+      use_testnet,
       tick_rate,
       frame_rate,
       screen: Box::new(screen),

@@ -1,8 +1,5 @@
 use super::{error::AssetError, Candle, MarketEvent, MarketEventDetail, Pair};
-use crate::{
-  exchange::error::ExchangeError,
-  utils::{binance_client::BINANCE_WSS_BASE_URL, serde_utils::f64_from_string},
-};
+use crate::{exchange::error::ExchangeError, utils::serde_utils::f64_from_string};
 use binance_spot_connector_rust::{
   market::klines::KlineInterval, market_stream::kline::KlineStream,
   tokio_tungstenite::BinanceWebSocketClient,
@@ -62,9 +59,10 @@ pub struct KlineDetail {
 
 pub async fn new_ticker(
   pair: Pair,
+  stream_url: &str,
 ) -> Result<UnboundedReceiver<MarketEvent>, ExchangeError> {
   let (tx, rx) = mpsc::unbounded_channel();
-  let (mut conn, _) = BinanceWebSocketClient::connect_async(BINANCE_WSS_BASE_URL)
+  let (mut conn, _) = BinanceWebSocketClient::connect_async(stream_url)
     .map_err(|e| ExchangeError::BinanceStreamError(e.to_string()))
     .await?;
 

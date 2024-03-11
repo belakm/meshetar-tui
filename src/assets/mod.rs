@@ -160,6 +160,7 @@ pub struct MarketFeed {
   last_n_candles: usize,
   pair: Pair,
   model_name: String,
+  stream_url: String,
 }
 impl MarketFeed {
   pub fn next(&mut self) -> Feed {
@@ -198,7 +199,7 @@ impl MarketFeed {
     &self,
     pair: Pair,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, ExchangeError> {
-    let ticker = asset_ticker::new_ticker(pair).await?;
+    let ticker = asset_ticker::new_ticker(self.pair.clone(), &self.stream_url).await?;
     Ok(ticker)
   }
   async fn new_backtest(
@@ -225,6 +226,7 @@ impl MarketFeed {
     last_n_candles: usize,
     pair: Pair,
     model_name: String,
+    stream_url: String,
   ) -> Self {
     MarketFeed {
       market_receiver: None,
@@ -233,6 +235,7 @@ impl MarketFeed {
       last_n_candles,
       pair,
       model_name,
+      stream_url,
     }
   }
 }

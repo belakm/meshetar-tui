@@ -105,17 +105,46 @@ impl ExchangeBalance {
 
 async fn get_exchange_balances(
   binance_client: BinanceClient,
+  use_testnet: bool,
 ) -> Result<Vec<ExchangeAssetBalance>, ExchangeError> {
   let request = binance_spot_connector_rust::wallet::user_asset()
     .need_btc_valuation(true)
     .asset("BNB");
+  let balances = if use_testnet {
+    get_exchange_balances_testnet(binance_client).await?
+  } else {
+    get_exchange_balances_realnet(binance_client).await?
+  };
+  Ok(balances)
+}
 
+async fn get_exchange_balances_testnet(
+  binance_client: BinanceClient,
+) -> Result<Vec<ExchangeAssetBalance>, ExchangeError> {
+  let timestamp = Utc::now().timestamp().to_string();
+  let params: Vec<(&str, &str)> = vec![("timestamp", &timestamp)];
+  let request =
+    RequestBuilder::new(Method::Post, "/sapi/v1/capital/config/getall").params(params);
+  let data = binance_client
+    .client
+    .send(request)
+    .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
+  let balances = data
+    .into_body_str()
+    .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
+
+  let balances: Vec<ExchangeAssetBalance> = serde_json::from_str(&balances)?;
+  Ok(balances)
+}
+
+async fn get_exchange_balances_realnet(
+  binance_client: BinanceClient,
+) -> Result<Vec<ExchangeAssetBalance>, ExchangeError> {
   let request =
     RequestBuilder::new(Method::Post, "/sapi/v3/asset/getUserAsset").params(vec![
       ("needBtcValuation", "true"),
       ("timestamp", &Utc::now().timestamp().to_string()),
     ]);
-
   let data = binance_client
     .client
     .send(request)
@@ -132,11 +161,16 @@ pub struct ExchangeBook {
   last_balance: Option<ExchangeBalance>,
   db: Arc<Mutex<Database>>,
   exchange_client: BinanceClient,
+  use_testnet: bool,
 }
 
 impl ExchangeBook {
-  pub fn new(db: Arc<Mutex<Database>>, exchange_client: BinanceClient) -> Self {
-    Self { db, exchange_client, last_balance: None }
+  pub fn new(
+    db: Arc<Mutex<Database>>,
+    exchange_client: BinanceClient,
+    use_testnet: bool,
+  ) -> Self {
+    Self { db, exchange_client, last_balance: None, use_testnet }
   }
   pub async fn sync(&mut self) -> Result<(), ExchangeError> {
     let sync = if let Some(last_balance) = self.last_balance.clone() {
@@ -145,7 +179,8 @@ impl ExchangeBook {
       self.last_balance.is_none()
     };
     if sync {
-      let balances = get_exchange_balances(self.exchange_client.clone()).await?;
+      let balances =
+        get_exchange_balances(self.exchange_client.clone(), self.use_testnet).await?;
       let mut db = self.db.lock().await;
       let exchange_balance = ExchangeBalance::new(balances);
       db.set_exchange_balance(exchange_balance.clone());
