@@ -85,6 +85,17 @@ pub struct ExchangeAssetBalance {
   pub btc_valuation: f64,
 }
 
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, PartialOrd)]
+pub struct ExchangeAllCoinsInfo {
+  pub id: i64,
+  pub asset: String,
+  pub free: f64,
+  pub locked: f64,
+  pub balance_sheet_id: i64,
+  #[serde(default = "f64_default")]
+  pub btc_valuation: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ExchangeBalance {
   btc_valuation: f64,
@@ -107,9 +118,6 @@ async fn get_exchange_balances(
   binance_client: BinanceClient,
   use_testnet: bool,
 ) -> Result<Vec<ExchangeAssetBalance>, ExchangeError> {
-  let request = binance_spot_connector_rust::wallet::user_asset()
-    .need_btc_valuation(true)
-    .asset("BNB");
   let balances = if use_testnet {
     get_exchange_balances_testnet(binance_client).await?
   } else {
