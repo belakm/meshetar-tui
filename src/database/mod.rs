@@ -3,11 +3,19 @@ pub mod sqlite;
 
 use self::{error::DatabaseError, sqlite::DB_POOL};
 use crate::{
-  assets::{Candle, Pair},
+  assets::{
+    asset_ticker::{self, KlineDetail},
+    error::AssetError,
+    Candle, MarketEvent, MarketEventDetail, Pair,
+  },
   components::list::LabelValueItem,
-  exchange::ExchangeBalance,
+  events::Event,
+  exchange::{
+    binance_client::{self, BinanceClient},
+    ExchangeAccount,
+  },
   portfolio::{
-    account::Account,
+    account::{new_account_stream, Account},
     balance::{Balance, BalanceId},
     position::{determine_position_id, Position, PositionId},
   },
@@ -16,25 +24,43 @@ use crate::{
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
+use tokio::sync::{
+  mpsc::{self, Receiver, Sender},
+  Mutex,
+};
 use uuid::Uuid;
 
 pub struct Database {
   open_positions: HashMap<PositionId, Position>,
   closed_positions: HashMap<String, Vec<Position>>,
   current_balances: HashMap<BalanceId, Balance>,
-  exchange_balance: ExchangeBalance,
+  exchange_balances: HashMap<String, Balance>,
   statistics: HashMap<Uuid, TradingSummary>,
+  exchange_account: ExchangeAccount,
+  asset_prices: HashMap<String, KlineDetail>,
+  event_tx: mpsc::UnboundedSender<Event>,
+  stream_url: String,
 }
 impl Database {
-  pub async fn new() -> Result<Database, DatabaseError> {
+  pub async fn new(
+    event_tx: mpsc::UnboundedSender<Event>,
+    stream_url: String,
+  ) -> Result<Database, DatabaseError> {
     sqlite::initialize().await?;
-    Ok(Database {
+
+    let database = Database {
       open_positions: HashMap::new(),
       closed_positions: HashMap::new(),
       current_balances: HashMap::new(),
+      exchange_balances: HashMap::new(),
       statistics: HashMap::new(),
-      exchange_balance: ExchangeBalance::new(vec![]),
-    })
+      exchange_account: ExchangeAccount::default(),
+      asset_prices: HashMap::new(),
+      event_tx,
+      stream_url,
+    };
+
+    Ok(database)
   }
 
   pub fn set_balance(
@@ -55,12 +81,22 @@ impl Database {
     )
   }
 
-  pub fn set_exchange_balance(&mut self, exchange_balance: ExchangeBalance) {
-    self.exchange_balance = exchange_balance;
+  pub fn set_exchange_balances(&mut self, exchange_balances: Vec<(String, Balance)>) {
+    for (assetName, balance) in exchange_balances {
+      self.exchange_balances.insert(assetName, balance);
+    }
   }
 
-  pub fn get_exchange_balance(&mut self) -> ExchangeBalance {
-    self.exchange_balance.clone()
+  pub fn get_exchange_balances(&self) -> HashMap<String, Balance> {
+    self.exchange_balances.clone()
+  }
+
+  pub fn get_exchange_account(&self) -> ExchangeAccount {
+    self.exchange_account.clone()
+  }
+
+  pub fn set_exchange_account(&mut self, value: ExchangeAccount) {
+    self.exchange_account = value
   }
 
   pub fn set_open_position(&mut self, position: Position) -> Result<(), DatabaseError> {
@@ -239,6 +275,48 @@ impl Database {
       "Statistics for {} missing on database lookup. Available keys: {:?}",
       core_id, keys
     )))
+  }
+
+  pub async fn run(
+    &mut self,
+    pairs: Vec<Pair>,
+    binance_client: BinanceClient,
+  ) -> Result<(), DatabaseError> {
+    log::info!("Database loop started.");
+    let stream_url = self.stream_url.clone();
+    let mut ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
+    let mut account_listener =
+      new_account_stream(&self.stream_url, binance_client).await?;
+    loop {
+      match ticker.try_recv() {
+        Ok(event) => {
+          self.event_tx.send(Event::Market(event.clone()));
+          match event.detail {
+            MarketEventDetail::Candle(candle) => {
+              let candles: Vec<Candle> = vec![candle];
+              let insert = self.add_candles(event.pair, candles).await;
+              match insert {
+                Ok(_) => log::info!("Inserted new candle."),
+                Err(e) => log::warn!("Error inserting candle: {:?}", e),
+              }
+            },
+            _ => (),
+          }
+        },
+        Err(e) => {
+          log::error!("error: {}", e);
+          break;
+        },
+      }
+      match account_listener.try_recv() {
+        Ok(balances) => self.set_exchange_balances(balances),
+        Err(e) => {
+          log::error!("Error: {}", e);
+          break;
+        },
+      }
+    }
+    Ok(())
   }
 }
 

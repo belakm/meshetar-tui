@@ -3,14 +3,14 @@ pub mod error;
 use crate::{
   assets::Pair,
   database::Database,
+  exchange::binance_client::BinanceClient,
   exchange::fetch_candles,
-  portfolio::Portfolio,
+  portfolio::{balance::Balance, error::PortfolioError, Portfolio},
   screens::run_config::CoreConfiguration,
   statistic::{StatisticConfig, TradingSummary},
   trading::Trader,
-  utils::binance_client::BinanceClient,
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use error::CoreError;
 use prettytable::Table;
 use serde::Serialize;
@@ -76,9 +76,6 @@ impl Core {
     };
 
     let _ = self
-      .portfolio
-      .lock()
-      .await
       .init_core_in_db(self.id, self.statistics_config.starting_equity, starting_time)
       .await;
 
@@ -289,6 +286,26 @@ impl Core {
     );
 
     Ok((overall_stats_tables, exited_positions_table))
+  }
+
+  async fn init_core_in_db(
+    &self,
+    core_id: Uuid,
+    starting_cash: f64,
+    starting_time: DateTime<Utc>,
+  ) -> Result<(), CoreError> {
+    let mut db = self.database.lock().await;
+    db.set_balance(
+      core_id,
+      Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
+    )?;
+    db.set_statistics(
+      core_id,
+      TradingSummary::init(self.statistics_config, Some(starting_time)),
+    )
+    .map_err(CoreError::RepositoryInteraction)?;
+    log::info!("New core initiated in DB {}", core_id);
+    Ok(())
   }
 }
 

@@ -1,20 +1,3 @@
-use chrono::{DateTime, Utc};
-use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-  layout::{Constraint, Layout, Margin},
-  prelude::Rect,
-  widgets::Clear,
-};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
-use thiserror::Error;
-use tokio::sync::{
-  mpsc::{self, UnboundedReceiver, UnboundedSender},
-  Mutex,
-};
-use uuid::Uuid;
-
 use crate::{
   action::{Action, MoveDirection, ScreenUpdate},
   assets::{error::AssetError, MarketFeed, Pair},
@@ -23,7 +6,10 @@ use crate::{
   core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
   events::EventTx,
-  exchange::{error::ExchangeError, ExchangeBook},
+  exchange::{
+    binance_client::{self, BinanceClient, BinanceClientError},
+    error::ExchangeError,
+  },
   mode::Mode,
   portfolio::{
     allocator::Allocator, error::PortfolioError, risk::RiskEvaluator, Portfolio,
@@ -43,11 +29,24 @@ use crate::{
   strategy::{generate_new_model, Strategy},
   trading::{error::TraderError, execution::Execution, Trader},
   tui::{self, Frame, Tui},
-  utils::{
-    binance_client::{self, BinanceClient, BinanceClientError},
-    load_config::{self, read_config, ExchangeConfig},
-  },
+  utils::load_config::{self, read_config, ExchangeConfig},
 };
+use chrono::{DateTime, Utc};
+use color_eyre::eyre::Result;
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::{
+  layout::{Constraint, Layout, Margin},
+  prelude::Rect,
+  widgets::Clear,
+};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, sync::Arc};
+use thiserror::Error;
+use tokio::sync::{
+  mpsc::{self, UnboundedReceiver, UnboundedSender},
+  Mutex,
+};
+use uuid::Uuid;
 
 #[derive(Error, Debug)]
 enum MainError {
@@ -82,7 +81,6 @@ pub struct App {
   core: Option<Core>,
   core_command_tx: Option<mpsc::Sender<Command>>,
   binance_client: BinanceClient,
-  exchange_book: ExchangeBook,
   tui: Tui,
   use_testnet: bool,
 }
@@ -119,14 +117,6 @@ impl App {
         .command_reciever(trader_command_receiver)
         .event_transmitter(event_transmitter)
         .portfolio(Arc::clone(&self.portfolio))
-        .market_feed(MarketFeed::new(
-          core_configuration.run_live,
-          self.database.clone(),
-          core_configuration.backtest_last_n_candles,
-          core_configuration.pair,
-          core_configuration.model_name.clone(),
-          ExchangeConfig::get_exchange_stream_url(self.use_testnet),
-        ))
         .strategy(Strategy::new(core_configuration.pair, core_configuration.model_name))
         .execution(Execution::new(core_configuration.exchange_fee))
         .build()?,
@@ -181,12 +171,13 @@ impl App {
     let mut screen = Home::default();
     let (action_tx, action_rx) = mpsc::unbounded_channel();
     let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
-    screen.register_action_handler(action_tx.clone())?;
-    screen.register_config_handler(config.clone())?;
-    screen.init(tui.size()?)?;
-    let database: Arc<Mutex<Database>> =
-      Arc::new(Mutex::new(Database::new().await.map_err(MainError::from)?));
-
+    let use_testnet = read_config()?.use_testnet;
+    let (database_tx, database_rx) = mpsc::unbounded_channel();
+    let database: Arc<Mutex<Database>> = Arc::new(Mutex::new(
+      Database::new(database_tx, ExchangeConfig::get_exchange_stream_url(use_testnet))
+        .await
+        .map_err(MainError::from)?,
+    ));
     let portfolio: Arc<Mutex<Portfolio>> = Arc::new(Mutex::new(
       Portfolio::builder()
         .database(database.clone())
@@ -196,11 +187,22 @@ impl App {
         .build()
         .await?,
     ));
-
     let binance_client = BinanceClient::new().await.map_err(MainError::from)?;
-    let use_testnet = read_config()?.use_testnet;
-    let exchange_book =
-      ExchangeBook::new(database.clone(), binance_client.clone(), use_testnet);
+
+    screen.register_action_handler(action_tx.clone())?;
+    screen.register_config_handler(config.clone())?;
+    screen.init(tui.size()?)?;
+
+    let action_tx = action_tx.clone();
+    let pairs = vec![Pair::BTCUSDT, Pair::ETHBTC];
+    let db_clone = database.clone();
+    let binance_client_clone = binance_client.clone();
+    tokio::spawn(async move {
+      match db_clone.lock().await.run(pairs, binance_client_clone).await {
+        Ok(_) => log::info!("Database run finished."),
+        Err(e) => log::error!("{}", e.to_string()),
+      };
+    });
 
     Ok(Self {
       use_testnet,
@@ -218,7 +220,6 @@ impl App {
       portfolio,
       core: None,
       binance_client,
-      exchange_book,
       core_command_tx: None,
     })
   }
@@ -306,11 +307,7 @@ impl App {
         }
 
         match action {
-          Action::Tick => {
-            if let Err(e) = self.exchange_book.sync().await {
-              log::error!("{:?}", e)
-            }
-          },
+          Action::Tick => {},
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
@@ -329,7 +326,6 @@ impl App {
                   .send(Action::Error(format!("Failed to draw: {:?}", e)))
                   .unwrap();
               }
-              let _ = draw_header(f, layout[0], self.exchange_book.last_balance_info());
             })?;
           },
           Action::Render => {
@@ -346,7 +342,6 @@ impl App {
                   .send(Action::Error(format!("Failed to draw: {:?}", e)))
                   .unwrap();
               }
-              let _ = draw_header(f, layout[0], self.exchange_book.last_balance_info());
             })?;
           },
           Action::Navigate(screen) => {

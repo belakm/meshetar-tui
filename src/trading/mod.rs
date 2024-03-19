@@ -41,7 +41,6 @@ pub struct Trader {
   event_transmitter: EventTx,
   event_queue: VecDeque<Event>,
   portfolio: Arc<Mutex<Portfolio>>,
-  market_feed: MarketFeed,
   strategy: Strategy,
   execution: Execution,
   trading_is_live: bool,
@@ -52,7 +51,6 @@ impl Trader {
     TraderBuilder::new()
   }
   pub async fn run(&mut self) -> Result<(), TraderError> {
-    let _ = self.market_feed.run().await?;
     let _ = tokio::time::sleep(Duration::from_micros(200)).await;
 
     'trader_loop: loop {
@@ -66,43 +64,6 @@ impl Trader {
           },
           _ => continue,
         }
-      }
-      match self.market_feed.next() {
-        Feed::Next(market_event) => {
-          self.event_transmitter.send(Event::Market(market_event.clone()));
-          self.event_queue.push_back(Event::Market(market_event));
-        },
-        Feed::Unhealthy => {
-          warn!(
-              core_id = %self.core_id,
-              pair = ?self.pair,
-              action = "continuing while waiting for healthy Feed",
-              "MarketFeed unhealthy"
-          );
-          continue;
-        },
-        Feed::Empty => {
-          sleep(Duration::from_micros(200)).await;
-          continue;
-        },
-        Feed::Finished => {
-          let positions = self.portfolio.lock().await.open_positions(self.core_id).await;
-          match positions {
-            Ok(positions) => {
-              if positions.len() > 0 {
-                let last_update = positions.last().unwrap().meta.update_time;
-                self.event_queue.push_back(Event::SignalForceExit(
-                  SignalForceExit::from(self.pair.clone(), Some(last_update)),
-                ));
-              } else {
-                break;
-              }
-            },
-            Err(e) => {
-              error!("{:?}", e)
-            },
-          }
-        },
       }
       while let Some(event) = self.event_queue.pop_front() {
         match event {
@@ -258,10 +219,6 @@ impl TraderBuilder {
     Self { portfolio: Some(value), ..self }
   }
 
-  pub fn market_feed(self, value: MarketFeed) -> Self {
-    Self { market_feed: Some(value), ..self }
-  }
-
   pub fn strategy(self, value: Strategy) -> Self {
     Self { strategy: Some(value), ..self }
   }
@@ -286,7 +243,6 @@ impl TraderBuilder {
         .ok_or(TraderError::BuilderIncomplete("event_tx"))?,
       event_queue: VecDeque::with_capacity(20),
       portfolio: self.portfolio.ok_or(TraderError::BuilderIncomplete("portfolio"))?,
-      market_feed: self.market_feed.ok_or(TraderError::BuilderIncomplete("data"))?,
       strategy: self.strategy.ok_or(TraderError::BuilderIncomplete("strategy"))?,
       execution: self.execution.ok_or(TraderError::BuilderIncomplete("execution"))?,
       trading_is_live: self

@@ -7,12 +7,9 @@ pub mod error;
 use self::{asset_ticker::KlineEvent, error::AssetError};
 use crate::{
   database::Database,
-  exchange::{error::ExchangeError, BinanceKline},
+  exchange::{binance_client::BinanceClient, error::ExchangeError, BinanceKline},
   strategy::Signal,
-  utils::{
-    binance_client::BinanceClient,
-    formatting::{dt_to_readable, timestamp_to_dt},
-  },
+  utils::formatting::{dt_to_readable, timestamp_to_dt},
 };
 use binance_spot_connector_rust::market::klines::KlineInterval;
 use chrono::{DateTime, Duration, Utc};
@@ -55,7 +52,7 @@ pub enum Feed {
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct MarketEvent {
   pub time: DateTime<Utc>,
-  pub asset: Pair,
+  pub pair: Pair,
   pub detail: MarketEventDetail,
 }
 
@@ -173,33 +170,33 @@ impl MarketFeed {
       Err(mpsc::error::TryRecvError::Disconnected) => Feed::Finished,
     }
   }
-  pub async fn run(&mut self) -> Result<(), AssetError> {
-    self.market_receiver = if self.is_live {
-      Some(self.new_live_feed(self.pair.clone()).await?)
-    } else {
-      Some(
-        self
-          .new_backtest(
-            self.database.clone(),
-            self.last_n_candles,
-            50,
-            self.pair.clone(),
-            self.model_name.clone(),
-          )
-          .await?,
-      )
-    };
-    info!(
-      "Datafeed init complete. Market receiver is ok: {}",
-      self.market_receiver.is_some()
-    );
-    Ok(())
-  }
+  // pub async fn run(&mut self) -> Result<(), AssetError> {
+  //   self.market_receiver = if self.is_live {
+  //     Some(self.new_live_feed(self.pair.clone()).await?)
+  //   } else {
+  //     Some(
+  //       self
+  //         .new_backtest(
+  //           self.database.clone(),
+  //           self.last_n_candles,
+  //           50,
+  //           self.pair.clone(),
+  //           self.model_name.clone(),
+  //         )
+  //         .await?,
+  //     )
+  //   };
+  //   info!(
+  //     "Datafeed init complete. Market receiver is ok: {}",
+  //     self.market_receiver.is_some()
+  //   );
+  //   Ok(())
+  // }
   async fn new_live_feed(
     &self,
-    pair: Pair,
+    pairs: Vec<Pair>,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, ExchangeError> {
-    let ticker = asset_ticker::new_ticker(self.pair.clone(), &self.stream_url).await?;
+    let ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
     Ok(ticker)
   }
   async fn new_backtest(

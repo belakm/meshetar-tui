@@ -51,7 +51,7 @@ pub async fn new_ticker(
             if signal.is_some() { signal.unwrap().to_owned() } else { None };
           let _ = tx.send(MarketEvent {
             time: candle.close_time,
-            asset: pair.clone(),
+            pair,
             detail: MarketEventDetail::BacktestCandle((candle.to_owned(), signal)),
           });
         }

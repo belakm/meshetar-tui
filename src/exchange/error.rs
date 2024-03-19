@@ -1,6 +1,5 @@
+use crate::{database::error::DatabaseError, utils::load_config::ConfigError};
 use thiserror::Error;
-
-use crate::database::error::DatabaseError;
 
 #[derive(Error, Debug)]
 pub enum ExchangeError {
@@ -10,4 +9,6 @@ pub enum ExchangeError {
   BinanceClientError(String),
   #[error("Failed to serialize/deserialize JSON due to: {0}")]
   JsonSerDe(#[from] serde_json::Error),
+  #[error("Init failed {0}")]
+  ConfigOnInit(#[from] ConfigError),
 }

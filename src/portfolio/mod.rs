@@ -47,25 +47,6 @@ impl Portfolio {
   pub fn builder() -> PortfolioBuilder {
     PortfolioBuilder::new()
   }
-  pub async fn init_core_in_db(
-    &self,
-    core_id: Uuid,
-    starting_cash: f64,
-    starting_time: DateTime<Utc>,
-  ) -> Result<(), PortfolioError> {
-    let mut db = self.database.lock().await;
-    db.set_balance(
-      core_id,
-      Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
-    )?;
-    db.set_statistics(
-      core_id,
-      TradingSummary::init(self.statistic_config, Some(starting_time)),
-    )
-    .map_err(PortfolioError::RepositoryInteraction)?;
-    log::info!("New core initiated in DB {}", core_id);
-    Ok(())
-  }
 
   pub async fn open_positions(
     &self,
@@ -172,7 +153,7 @@ impl Portfolio {
     market: MarketEvent,
   ) -> Result<Option<PositionUpdate>, PortfolioError> {
     // Determine the position_id associated to the input MarketEvent
-    let position_id = determine_position_id(&core_id, &market.asset);
+    let position_id = determine_position_id(&core_id, &market.pair);
     let mut database = self.database.lock().await;
     // Update Position if Portfolio has an open Position for that Symbol-Exchange combination
     if let Some(mut position) = database.get_open_position(&position_id)? {

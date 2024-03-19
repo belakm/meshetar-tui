@@ -7,6 +7,7 @@ use binance_spot_connector_rust::{
 use chrono::{TimeZone, Utc};
 use futures::{StreamExt, TryFutureExt};
 use serde::Deserialize;
+use std::str::FromStr;
 use tokio::sync::mpsc::{self, error::SendError, UnboundedReceiver};
 use tracing::{info, warn};
 
@@ -58,7 +59,7 @@ pub struct KlineDetail {
 }
 
 pub async fn new_ticker(
-  pair: Pair,
+  pairs: Vec<Pair>,
   stream_url: &str,
 ) -> Result<UnboundedReceiver<MarketEvent>, ExchangeError> {
   let (tx, rx) = mpsc::unbounded_channel();
@@ -66,9 +67,13 @@ pub async fn new_ticker(
     .map_err(|e| ExchangeError::BinanceStreamError(e.to_string()))
     .await?;
 
-  let subscription = conn
-    .subscribe(vec![&KlineStream::new(&pair.to_string(), KlineInterval::Minutes1).into()])
-    .await;
+  for pair in pairs {
+    conn
+      .subscribe(vec![
+        &KlineStream::new(&pair.to_string(), KlineInterval::Minutes1).into()
+      ])
+      .await;
+  }
 
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
@@ -80,18 +85,22 @@ pub async fn new_ticker(
             serde_json::from_str(&string_data);
           match raw_asset_parse {
             Ok(new_kline) => {
-              if let Err(e) = tx.send(MarketEvent {
-                time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
-                asset: pair,
-                detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
-              }) {
-                let e_msg = e.to_string();
-                match e {
-                  SendError(market_event) => {
-                    log::error!("Mystery market feed error: {}", e_msg);
-                    break;
-                  },
-                }
+              if let Ok(pair) = Pair::from_str(&new_kline.symbol) {
+                if let Err(e) = tx.send(MarketEvent {
+                  time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
+                  pair,
+                  detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
+                }) {
+                  let e_msg = e.to_string();
+                  match e {
+                    SendError(market_event) => {
+                      log::error!("Mystery market feed error: {}", e_msg);
+                      break;
+                    },
+                  }
+                };
+              } else {
+                log::warn!("Couldn't parse Pair from websocket kline.")
               };
             },
             Err(e) => {

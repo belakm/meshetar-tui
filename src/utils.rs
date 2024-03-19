@@ -8,7 +8,6 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::{
   self, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, Layer,
 };
-pub mod binance_client;
 pub mod formatting;
 pub mod load_config;
 pub mod serde_utils;
