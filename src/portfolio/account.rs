@@ -92,7 +92,10 @@ pub async fn new_account_stream(
             Ok(ev) => {
               let balances: Vec<(String, Balance)> =
                 ev.B.iter().map(|b| b.to_balance()).collect();
-              tx.send(balances);
+              if let Err(e) = tx.send(balances) {
+                log::error!("Stopping spot account websocket: {:?}", e);
+                break;
+              }
             },
             Err(e) => {
               log::warn!("Error parsing asset feed event: {}", e);
