@@ -25,7 +25,11 @@ use crate::{
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use tokio::sync::{
-  mpsc::{self, Receiver, Sender},
+  mpsc::{
+    self,
+    error::{SendError, TryRecvError},
+    Receiver, Sender,
+  },
   Mutex,
 };
 use uuid::Uuid;
@@ -290,7 +294,19 @@ impl Database {
     loop {
       match ticker.try_recv() {
         Ok(event) => {
-          self.event_tx.send(Event::Market(event.clone()));
+          if let Err(e) = self.event_tx.send(Event::Market(event.clone())) {
+            let error_msg = format!("{:?}", e);
+            match e {
+              SendError(event) => {
+                log::warn!(
+                  "Database can't send events back to the app. Error: {}. Event: {:?}",
+                  error_msg,
+                  event
+                );
+              },
+            }
+          }
+
           match event.detail {
             MarketEventDetail::Candle(candle) => {
               let candles: Vec<Candle> = vec![candle];
@@ -303,16 +319,22 @@ impl Database {
             _ => (),
           }
         },
-        Err(e) => {
-          log::error!("error: {}", e);
-          break;
+        Err(e) => match e {
+          TryRecvError::Empty => {},
+          TryRecvError::Disconnected => {
+            log::error!("Ticker socket disconnected: {}", e);
+            break;
+          },
         },
       }
       match account_listener.try_recv() {
         Ok(balances) => self.set_exchange_balances(balances),
-        Err(e) => {
-          log::error!("Error: {}", e);
-          break;
+        Err(e) => match e {
+          TryRecvError::Empty => {},
+          TryRecvError::Disconnected => {
+            log::error!("Account socket disconnected: {}", e);
+            break;
+          },
         },
       }
     }

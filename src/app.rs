@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::{
-  mpsc::{self, UnboundedReceiver, UnboundedSender},
+  mpsc::{self, error::TryRecvError, UnboundedReceiver, UnboundedSender},
   Mutex,
 };
 use uuid::Uuid;
@@ -147,8 +147,18 @@ impl App {
     // This forwards messages from Core to App
     let action_tx_clone = self.action_tx.clone();
     tokio::spawn(async move {
-      while let Ok(msg) = core_message_rx.try_recv() {
-        let _ = action_tx_clone.send(Action::CoreMessage(msg));
+      loop {
+        match core_message_rx.try_recv() {
+          Ok(msg) => {
+            let _ = action_tx_clone.send(Action::CoreMessage(msg));
+          },
+          Err(e) => match e {
+            TryRecvError::Disconnected => {
+              break;
+            },
+            TryRecvError::Empty => {},
+          },
+        }
       }
     });
 
@@ -169,12 +179,12 @@ impl App {
     let config = Config::new()?;
     let mode = Mode::Home;
     let mut screen = Home::default();
-    let (action_tx, action_rx) = mpsc::unbounded_channel();
     let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
     let use_testnet = read_config()?.use_testnet;
-    let (database_tx, database_rx) = mpsc::unbounded_channel();
+    let (action_tx, action_rx) = mpsc::unbounded_channel();
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
     let database: Arc<Mutex<Database>> = Arc::new(Mutex::new(
-      Database::new(database_tx, ExchangeConfig::get_exchange_stream_url(use_testnet))
+      Database::new(event_tx, ExchangeConfig::get_exchange_stream_url(use_testnet))
         .await
         .map_err(MainError::from)?,
     ));

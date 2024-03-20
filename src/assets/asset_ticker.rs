@@ -80,32 +80,33 @@ pub async fn new_ticker(
       match message {
         Ok(message) => {
           let data = message.into_data();
-          let string_data = String::from_utf8(data).expect("Found invalid UTF-8 chars");
-          let raw_asset_parse: Result<KlineEvent, serde_json::Error> =
-            serde_json::from_str(&string_data);
-          match raw_asset_parse {
-            Ok(new_kline) => {
-              if let Ok(pair) = Pair::from_str(&new_kline.symbol) {
-                if let Err(e) = tx.send(MarketEvent {
-                  time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
-                  pair,
-                  detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
-                }) {
-                  let e_msg = e.to_string();
-                  match e {
-                    SendError(market_event) => {
-                      log::error!("Mystery market feed error: {}", e_msg);
-                      break;
-                    },
-                  }
+          if let Ok(string_data) = String::from_utf8(data) {
+            let raw_asset_parse: Result<KlineEvent, serde_json::Error> =
+              serde_json::from_str(&string_data);
+            match raw_asset_parse {
+              Ok(new_kline) => {
+                if let Ok(pair) = Pair::from_str(&new_kline.symbol) {
+                  if let Err(e) = tx.send(MarketEvent {
+                    time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
+                    pair,
+                    detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
+                  }) {
+                    let e_msg = e.to_string();
+                    match e {
+                      SendError(market_event) => {
+                        log::error!("Mystery market feed error: {}", e_msg);
+                        break;
+                      },
+                    }
+                  };
+                } else {
+                  log::warn!("Couldn't parse Pair from websocket kline.")
                 };
-              } else {
-                log::warn!("Couldn't parse Pair from websocket kline.")
-              };
-            },
-            Err(e) => {
-              warn!("Error parsing asset feed event: {}", e);
-            },
+              },
+              Err(e) => {
+                warn!("Error parsing asset feed event: {}", e);
+              },
+            }
           }
         },
         Err(e) => warn!("Error recieving on PRICE SOCKET: {:?}", e),

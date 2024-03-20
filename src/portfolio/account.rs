@@ -79,33 +79,33 @@ pub async fn new_account_stream(
   let key = binance_client.get_stream_key().await?;
   let stream = binance_spot_connector_rust::user_data_stream::user_data(&key);
   conn.subscribe(vec![&stream.into()]).await;
-
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
+      log::info!("MSG: {:?}", message);
       match message {
         Ok(message) => {
           let data = message.into_data();
-          let string_data = String::from_utf8(data).expect("Found invalid UTF-8 chars");
-          let raw_event_parse: Result<ExchangeAccountUpdate, serde_json::Error> =
-            serde_json::from_str(&string_data);
-          match raw_event_parse {
-            Ok(ev) => {
-              let balances: Vec<(String, Balance)> =
-                ev.B.iter().map(|b| b.to_balance()).collect();
-              if let Err(e) = tx.send(balances) {
-                log::error!("Stopping spot account websocket: {:?}", e);
-                break;
-              }
-            },
-            Err(e) => {
-              log::warn!("Error parsing asset feed event: {}", e);
-            },
+          if let Ok(string_data) = String::from_utf8(data) {
+            let raw_event_parse: Result<ExchangeAccountUpdate, serde_json::Error> =
+              serde_json::from_str(&string_data);
+            match raw_event_parse {
+              Ok(ev) => {
+                let balances: Vec<(String, Balance)> =
+                  ev.B.iter().map(|b| b.to_balance()).collect();
+                if let Err(e) = tx.send(balances) {
+                  log::error!("Stopping spot account websocket: {:?}", e);
+                  break;
+                }
+              },
+              Err(e) => {
+                log::warn!("Error parsing event on spot account feed: {}", e);
+              },
+            }
           }
         },
-        Err(e) => log::warn!("Error recieving on PRICE SOCKET: {:?}", e),
+        Err(e) => log::warn!("Error recieving on spot account socket: {:?}", e),
       }
     }
   });
-
   Ok(rx)
 }

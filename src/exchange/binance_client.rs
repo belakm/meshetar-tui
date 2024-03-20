@@ -22,6 +22,7 @@ pub enum BinanceClientError {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BinanceRawKey {
   pub listen_key: String,
 }
@@ -46,6 +47,9 @@ impl BinanceClient {
     let key = key
       .into_body_str()
       .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
+
+    log::info!("{:?}", key);
+
     let key: BinanceRawKey = serde_json::from_str(&key)?;
     Ok(key.listen_key)
   }
