@@ -5,7 +5,7 @@ use crate::{
   config::Config,
   core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
-  events::EventTx,
+  events::{Event, EventTx},
   exchange::{
     binance_client::{self, BinanceClient, BinanceClientError},
     error::ExchangeError,
@@ -43,6 +43,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 use tokio::sync::{
+  broadcast,
   mpsc::{self, error::TryRecvError, UnboundedReceiver, UnboundedSender},
   Mutex,
 };
@@ -76,6 +77,7 @@ pub struct App {
   pub mode: Mode,
   action_tx: UnboundedSender<Action>,
   action_rx: UnboundedReceiver<Action>,
+  event_broadcast: broadcast::Sender<Event>,
   database: Arc<Mutex<Database>>,
   portfolio: Arc<Mutex<Portfolio>>,
   core: Option<Core>,
@@ -108,6 +110,7 @@ impl App {
       mpsc::channel::<Command>(20);
     let command_transmitters =
       HashMap::from([(core_configuration.pair, trader_command_transmitter)]);
+    let event_rx = self.event_broadcast.subscribe();
 
     traders.push(
       Trader::builder()
@@ -119,6 +122,7 @@ impl App {
         .portfolio(Arc::clone(&self.portfolio))
         .strategy(Strategy::new(core_configuration.pair, core_configuration.model_name))
         .execution(Execution::new(core_configuration.exchange_fee))
+        .event_rx(event_rx)
         .build()?,
     );
 
@@ -182,11 +186,14 @@ impl App {
     let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
     let use_testnet = read_config()?.use_testnet;
     let (action_tx, action_rx) = mpsc::unbounded_channel();
-    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let (event_broadcast, event_rx) = broadcast::channel(20);
     let database: Arc<Mutex<Database>> = Arc::new(Mutex::new(
-      Database::new(event_tx, ExchangeConfig::get_exchange_stream_url(use_testnet))
-        .await
-        .map_err(MainError::from)?,
+      Database::new(
+        event_broadcast.clone(),
+        ExchangeConfig::get_exchange_stream_url(use_testnet),
+      )
+      .await
+      .map_err(MainError::from)?,
     ));
     let portfolio: Arc<Mutex<Portfolio>> = Arc::new(Mutex::new(
       Portfolio::builder()
@@ -225,6 +232,7 @@ impl App {
       mode,
       action_tx,
       action_rx,
+      event_broadcast,
       tui,
       database,
       portfolio,

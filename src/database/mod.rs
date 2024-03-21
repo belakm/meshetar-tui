@@ -25,6 +25,7 @@ use crate::{
 use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
 use tokio::sync::{
+  broadcast,
   mpsc::{
     self,
     error::{SendError, TryRecvError},
@@ -42,12 +43,12 @@ pub struct Database {
   statistics: HashMap<Uuid, TradingSummary>,
   exchange_account: ExchangeAccount,
   asset_prices: HashMap<String, KlineDetail>,
-  event_tx: mpsc::UnboundedSender<Event>,
+  event_tx: broadcast::Sender<Event>,
   stream_url: String,
 }
 impl Database {
   pub async fn new(
-    event_tx: mpsc::UnboundedSender<Event>,
+    event_tx: broadcast::Sender<Event>,
     stream_url: String,
   ) -> Result<Database, DatabaseError> {
     sqlite::initialize().await?;
@@ -297,7 +298,7 @@ impl Database {
           if let Err(e) = self.event_tx.send(Event::Market(event.clone())) {
             let error_msg = format!("{:?}", e);
             match e {
-              SendError(event) => {
+              broadcast::error::SendError(event) => {
                 log::warn!(
                   "Database can't send events back to the app. Error: {}. Event: {:?}",
                   error_msg,
@@ -306,7 +307,6 @@ impl Database {
               },
             }
           }
-
           match event.detail {
             MarketEventDetail::Candle(candle) => {
               let candles: Vec<Candle> = vec![candle];

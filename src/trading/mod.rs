@@ -1,11 +1,11 @@
 pub mod error;
 pub mod execution;
 
+use self::{error::TraderError, execution::Execution};
 use crate::{
   assets::{Feed, MarketEventDetail, MarketFeed, Pair},
   core::Command,
-  events::MessageTransmitter,
-  events::{Event, EventTx},
+  events::{Event, EventTx, MessageTransmitter},
   portfolio::Portfolio,
   strategy::Strategy,
 };
@@ -14,13 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 use strum::{Display, EnumString};
 use tokio::{
-  sync::{mpsc, Mutex},
+  sync::{broadcast, mpsc, Mutex},
   time::sleep,
 };
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-
-use self::{error::TraderError, execution::Execution};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct SignalForceExit {
@@ -39,6 +37,7 @@ pub struct Trader {
   pub pair: Pair,
   command_reciever: mpsc::Receiver<Command>,
   event_transmitter: EventTx,
+  event_rx: broadcast::Receiver<Event>,
   event_queue: VecDeque<Event>,
   portfolio: Arc<Mutex<Portfolio>>,
   strategy: Strategy,
@@ -64,6 +63,43 @@ impl Trader {
           },
           _ => continue,
         }
+      }
+      match self.event_rx.try_recv() {
+        Ok(event) => {
+          self.event_queue.push_back(event);
+        },
+        Err(e) => {
+          let err_msg = format!("Error on trader event feed: {:?}", e);
+          match e {
+            broadcast::error::TryRecvError::Empty => {
+              continue;
+            },
+            broadcast::error::TryRecvError::Lagged(num_skipped) => {
+              log::warn!("Trader skipped {} messages (lag).", num_skipped);
+              continue;
+            },
+            broadcast::error::TryRecvError::Closed => {
+              log::warn!("{}", err_msg);
+              let positions =
+                self.portfolio.lock().await.open_positions(self.core_id).await;
+              match positions {
+                Ok(positions) => {
+                  if positions.len() > 0 {
+                    let last_update = positions.last().unwrap().meta.update_time;
+                    self.event_queue.push_back(Event::SignalForceExit(
+                      SignalForceExit::from(self.pair.clone(), Some(last_update)),
+                    ));
+                  } else {
+                    break;
+                  }
+                },
+                Err(e) => {
+                  error!("{:?}", e)
+                },
+              }
+            },
+          }
+        },
       }
       while let Some(event) = self.event_queue.pop_front() {
         match event {
@@ -178,6 +214,7 @@ pub struct TraderBuilder {
   market_feed: Option<MarketFeed>,
   command_reciever: Option<mpsc::Receiver<Command>>,
   event_transmitter: Option<EventTx>,
+  event_rx: Option<broadcast::Receiver<Event>>,
   event_queue: Option<VecDeque<Event>>,
   portfolio: Option<Arc<Mutex<Portfolio>>>,
   strategy: Option<Strategy>,
@@ -192,6 +229,7 @@ impl TraderBuilder {
       pair: None,
       trading_is_live: None,
       event_transmitter: None,
+      event_rx: None,
       portfolio: None,
       market_feed: None,
       event_queue: None,
@@ -219,6 +257,10 @@ impl TraderBuilder {
     Self { portfolio: Some(value), ..self }
   }
 
+  pub fn market_feed(self, value: MarketFeed) -> Self {
+    Self { market_feed: Some(value), ..self }
+  }
+
   pub fn strategy(self, value: Strategy) -> Self {
     Self { strategy: Some(value), ..self }
   }
@@ -231,6 +273,10 @@ impl TraderBuilder {
     Self { trading_is_live: Some(value), ..self }
   }
 
+  pub fn event_rx(self, value: broadcast::Receiver<Event>) -> Self {
+    Self { event_rx: Some(value), ..self }
+  }
+
   pub fn build(self) -> Result<Trader, TraderError> {
     Ok(Trader {
       core_id: self.core_id.ok_or(TraderError::BuilderIncomplete("engine_id"))?,
@@ -241,6 +287,7 @@ impl TraderBuilder {
       event_transmitter: self
         .event_transmitter
         .ok_or(TraderError::BuilderIncomplete("event_tx"))?,
+      event_rx: self.event_rx.ok_or(TraderError::BuilderIncomplete("event_rx"))?,
       event_queue: VecDeque::with_capacity(20),
       portfolio: self.portfolio.ok_or(TraderError::BuilderIncomplete("portfolio"))?,
       strategy: self.strategy.ok_or(TraderError::BuilderIncomplete("strategy"))?,
