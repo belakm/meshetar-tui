@@ -11,11 +11,10 @@ use crate::{
   components::list::LabelValueItem,
   events::Event,
   exchange::{
+    account::{self, get_account_from_exchange, new_account_stream, ExchangeAccount},
     binance_client::{self, BinanceClient},
-    ExchangeAccount,
   },
   portfolio::{
-    account::{new_account_stream, Account},
     balance::{Balance, BalanceId},
     position::{determine_position_id, Position, PositionId},
   },
@@ -87,8 +86,8 @@ impl Database {
   }
 
   pub fn set_exchange_balances(&mut self, exchange_balances: Vec<(String, Balance)>) {
-    for (assetName, balance) in exchange_balances {
-      self.exchange_balances.insert(assetName, balance);
+    for (asset_name, balance) in exchange_balances {
+      self.exchange_balances.insert(asset_name, balance);
     }
   }
 
@@ -290,8 +289,16 @@ impl Database {
     log::info!("Database loop started.");
     let stream_url = self.stream_url.clone();
     let mut ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
+    let binance_client_clone = binance_client.clone();
     let mut account_listener =
-      new_account_stream(&self.stream_url, binance_client).await?;
+      new_account_stream(&self.stream_url, binance_client_clone).await?;
+
+    // fetch latest account data
+    let account = get_account_from_exchange(binance_client).await?;
+    self.exchange_account = account.clone();
+    self.set_exchange_balances(account.get_balances());
+
+    // listen for further updates
     loop {
       match ticker.try_recv() {
         Ok(event) => {

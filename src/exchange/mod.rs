@@ -1,3 +1,4 @@
+pub mod account;
 pub mod binance_client;
 pub mod error;
 
@@ -74,23 +75,4 @@ async fn parse_binance_klines(klines: &String) -> Result<Vec<Candle>, ExchangeEr
     new_candles.push(Candle::from(new_candle));
   }
   Ok(new_candles)
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize, PartialOrd, Default)]
-pub struct ExchangeAccount {
-  maker_commission: f64,
-  taker_commission: f64,
-  buyer_commission: f64,
-  seller_commission: f64,
-  balances: Vec<Balance>,
-  can_trade: bool,
-  can_withdraw: bool,
-  can_deposit: bool,
-  brokered: bool,
-  require_self_trade_prevention: bool,
-  prevent_sor: bool,
-  update_time: i64,
-  account_type: String,
-  permissions: Vec<String>,
-  uid: i64,
 }
