@@ -2,8 +2,7 @@ use super::{Screen, ScreenId};
 use crate::{
   action::{Action, MoveDirection},
   components::style::{
-    default_layout, header_style, logo, outer_container_block, stylized_block,
-    stylized_button,
+    default_layout, header_style, outer_container_block, stylized_block, stylized_button,
   },
   config::{Config, KeyBindings},
 };

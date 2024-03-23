@@ -3,7 +3,7 @@ use crate::{
   action::{Action, ScreenUpdate},
   components::{
     list::{LabelValueItem, List},
-    style::{button, default_layout, logo, outer_container_block, stylized_block},
+    style::{button, default_layout, outer_container_block, stylized_block},
   },
   config::{Config, KeyBindings},
   database::{error::DatabaseError, Database},
@@ -68,12 +68,9 @@ impl Screen for Report {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     f.render_widget(outer_container_block(), area);
-    let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
-    let (header_area, content_area) = default_layout(inner_area);
-    f.render_widget(logo(), header_area);
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Length(2), Constraint::Min(0), Constraint::Length(3)])
-      .split(content_area);
+      .split(area);
     let button_layout = Layout::horizontal(vec![
       Constraint::Percentage(40),
       Constraint::Percentage(20),

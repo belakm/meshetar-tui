@@ -1,11 +1,9 @@
-use std::{fmt::Display, ops::Add};
-
-use crate::strategy::ModelMetadata;
-
 use super::{style::default_style, ListDisplay};
+use crate::strategy::ModelMetadata;
 use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use ratatui::{prelude::*, widgets::Paragraph};
 use serde::Serialize;
+use std::{fmt::Display, ops::Add};
 
 pub struct List<T: ListDisplay + Clone + Default> {
   items: Vec<T>,

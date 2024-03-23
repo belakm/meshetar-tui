@@ -4,7 +4,7 @@ use crate::{
   assets::Pair,
   components::{
     list::{LabelValueItem, List},
-    style::{button, default_layout, logo, outer_container_block, stylized_block},
+    style::{button, default_layout, outer_container_block, stylized_block},
   },
   config::{Config, KeyBindings},
   core::Command,
@@ -97,12 +97,9 @@ impl Screen for Running {
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     f.render_widget(outer_container_block(), area);
-    let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
-    let (header_area, content_area) = default_layout(inner_area);
-    f.render_widget(logo(), header_area);
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(3)])
-      .split(content_area);
+      .split(area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![

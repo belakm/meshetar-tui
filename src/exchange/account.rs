@@ -1,10 +1,14 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::{
   assets::Pair,
   events::Event,
   exchange::{binance_client::BinanceClient, error::ExchangeError},
   portfolio::balance::Balance,
 };
-use binance_spot_connector_rust::tokio_tungstenite::BinanceWebSocketClient;
+use binance_spot_connector_rust::{
+  http::request::RequestBuilder, tokio_tungstenite::BinanceWebSocketClient,
+};
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
@@ -169,11 +173,12 @@ impl ExchangeAccount {
 pub async fn get_account_from_exchange(
   binance_client: BinanceClient,
 ) -> Result<ExchangeAccount, ExchangeError> {
-  let request = binance_spot_connector_rust::trade::account();
+  let request = binance_spot_connector_rust::trade::account().recv_window(5000);
   let res = binance_client
     .client
     .send(request)
     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
+
   let res = res
     .into_body_str()
     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;

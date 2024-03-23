@@ -1,7 +1,10 @@
 use crate::{
   action::{Action, MoveDirection, ScreenUpdate},
   assets::{error::AssetError, MarketFeed, Pair},
-  components::style::{draw_header, logo, outer_container_block, stylized_block},
+  components::{
+    header::MeshetarHeader,
+    style::{outer_container_block, stylized_block},
+  },
   config::Config,
   core::{error::CoreError, Command, Core, CoreMessage},
   database::{error::DatabaseError, Database},
@@ -40,7 +43,7 @@ use ratatui::{
   widgets::Clear,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use thiserror::Error;
 use tokio::sync::{
   broadcast,
@@ -85,6 +88,7 @@ pub struct App {
   binance_client: BinanceClient,
   tui: Tui,
   use_testnet: bool,
+  header: MeshetarHeader,
 }
 
 static STATISTIC_CONFIG: StatisticConfig = StatisticConfig {
@@ -239,6 +243,7 @@ impl App {
       core: None,
       binance_client,
       core_command_tx: None,
+      header: MeshetarHeader::new(use_testnet),
     })
   }
 
@@ -265,6 +270,24 @@ impl App {
     screen.register_config_handler(self.config.clone())?;
     screen.init(self.tui.size()?)?;
     self.screen = screen;
+    Ok(())
+  }
+
+  fn draw(&mut self) -> Result<()> {
+    self.tui.draw(|f| {
+      let area = f.size();
+      f.render_widget(outer_container_block(), area);
+      let layout = Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
+        .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
+      if let Err(e) = self.header.draw(f, layout[0]) {
+        let action_tx = self.action_tx.clone();
+        action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+      }
+      if let Err(e) = self.screen.draw(f, layout[1]) {
+        let action_tx = self.action_tx.clone();
+        action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
+      }
+    })?;
     Ok(())
   }
 
@@ -325,42 +348,25 @@ impl App {
         }
 
         match action {
-          Action::Tick => {},
+          Action::Tick => {
+            let header_last_updated =
+              self.header.last_updated().unwrap_or(DateTime::default());
+            if Utc::now() - Duration::from_secs(10) > header_last_updated {
+              let db = self.database.lock().await;
+              let valuation = db.get_valuation();
+              drop(db);
+              self.header.update(valuation.0, valuation.1);
+            }
+          },
           Action::Quit => self.should_quit = true,
           Action::Suspend => self.should_suspend = true,
           Action::Resume => self.should_suspend = false,
           Action::Resize(w, h) => {
             self.tui.resize(Rect::new(0, 0, w, h))?;
-            self.tui.draw(|f| {
-              let area = f.size();
-              f.render_widget(outer_container_block(), area);
-              let layout =
-                Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
-                  .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
-
-              let r = self.screen.draw(f, layout[1]);
-              if let Err(e) = r {
-                action_tx
-                  .send(Action::Error(format!("Failed to draw: {:?}", e)))
-                  .unwrap();
-              }
-            })?;
+            self.draw()?;
           },
           Action::Render => {
-            self.tui.draw(|f| {
-              let area = f.size();
-              f.render_widget(outer_container_block(), area);
-              let layout =
-                Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
-                  .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
-
-              let r = self.screen.draw(f, layout[1]);
-              if let Err(e) = r {
-                action_tx
-                  .send(Action::Error(format!("Failed to draw: {:?}", e)))
-                  .unwrap();
-              }
-            })?;
+            self.draw()?;
           },
           Action::Navigate(screen) => {
             self.navigate(screen)?;

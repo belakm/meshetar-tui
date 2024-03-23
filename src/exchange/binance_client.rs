@@ -31,12 +31,24 @@ impl BinanceClient {
   pub async fn new() -> Result<BinanceClient, ExchangeError> {
     let config: ExchangeConfig =
       read_config().map_err(|e| ExchangeError::ConfigOnInit(e))?;
+
     let credentials =
       Credentials::from_hmac(config.binance_api_key, config.binance_api_secret);
+
     let client =
       BinanceHttpClient::with_url(&ExchangeConfig::get_exchange_url(config.use_testnet))
         .credentials(credentials);
     Ok(BinanceClient { client })
+  }
+
+  pub async fn credentials() -> Result<Credentials, ExchangeError> {
+    let config: ExchangeConfig =
+      read_config().map_err(|e| ExchangeError::ConfigOnInit(e))?;
+
+    let credentials =
+      Credentials::from_hmac(config.binance_api_key, config.binance_api_secret);
+
+    Ok(credentials)
   }
 
   pub async fn get_stream_key(&self) -> Result<String, ExchangeError> {

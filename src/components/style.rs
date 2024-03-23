@@ -199,36 +199,3 @@ pub fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
     ])
     .split(popup_layout[1])[1]
 }
-
-pub fn logo<'a>() -> Paragraph<'a> {
-  let title = r#"╔╦╗╔═╗╔═╗╦ ╦╔═╗╔╦╗╔═╗╦═╗
-║║║║╣ ╚═╗╠═╣║╣  ║ ╠═╣╠╦╝
-╩ ╩╚═╝╚═╝╩ ╩╚═╝ ╩ ╩ ╩╩╚═"#;
-  Paragraph::new(title).alignment(Alignment::Center).style(header_style())
-}
-pub fn draw_header(
-  f: &mut Frame<'_>,
-  area: Rect,
-  last_exchange_balance_info: (f64, DateTime<Utc>),
-) -> color_eyre::Result<()> {
-  let layout = Layout::horizontal(vec![
-    Constraint::Length(24),
-    Constraint::Length(1),
-    Constraint::Min(0),
-  ])
-  .split(area);
-  let info_layout =
-    Layout::vertical(vec![Constraint::Length(1), Constraint::Length(1)]).split(layout[2]);
-  let (btc_valuation, last_update) = last_exchange_balance_info;
-  f.render_widget(logo(), layout[0]);
-  f.render_widget(
-    Paragraph::new(btc_valuation.to_string() + " ₿").alignment(Alignment::Right),
-    info_layout[0],
-  );
-  f.render_widget(
-    Paragraph::new(time_ago(last_update)).alignment(Alignment::Right),
-    info_layout[1],
-  );
-
-  Ok(())
-}

@@ -95,6 +95,15 @@ impl Database {
     self.exchange_balances.clone()
   }
 
+  pub fn get_valuation(&self) -> (f64, f64) {
+    // TODO: add all other cryptos
+    let btc_valuation =
+      self.exchange_balances.get("BTC").unwrap_or(&Balance::default()).available;
+    let usdt_valuation =
+      self.exchange_balances.get("USDT").unwrap_or(&Balance::default()).available;
+    (btc_valuation, usdt_valuation)
+  }
+
   pub fn get_exchange_account(&self) -> ExchangeAccount {
     self.exchange_account.clone()
   }
@@ -290,13 +299,14 @@ impl Database {
     let stream_url = self.stream_url.clone();
     let mut ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
     let binance_client_clone = binance_client.clone();
-    let mut account_listener =
-      new_account_stream(&self.stream_url, binance_client_clone).await?;
 
     // fetch latest account data
     let account = get_account_from_exchange(binance_client).await?;
     self.exchange_account = account.clone();
     self.set_exchange_balances(account.get_balances());
+
+    let mut account_listener =
+      new_account_stream(&self.stream_url, binance_client_clone).await?;
 
     // listen for further updates
     loop {
