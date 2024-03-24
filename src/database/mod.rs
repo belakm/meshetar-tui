@@ -42,16 +42,10 @@ pub struct Database {
   statistics: HashMap<Uuid, TradingSummary>,
   exchange_account: ExchangeAccount,
   asset_prices: HashMap<String, KlineDetail>,
-  event_tx: broadcast::Sender<Event>,
-  stream_url: String,
 }
 impl Database {
-  pub async fn new(
-    event_tx: broadcast::Sender<Event>,
-    stream_url: String,
-  ) -> Result<Database, DatabaseError> {
+  pub async fn new() -> Result<Database, DatabaseError> {
     sqlite::initialize().await?;
-
     let database = Database {
       open_positions: HashMap::new(),
       closed_positions: HashMap::new(),
@@ -60,10 +54,7 @@ impl Database {
       statistics: HashMap::new(),
       exchange_account: ExchangeAccount::default(),
       asset_prices: HashMap::new(),
-      event_tx,
-      stream_url,
     };
-
     Ok(database)
   }
 
@@ -109,7 +100,9 @@ impl Database {
   }
 
   pub fn set_exchange_account(&mut self, value: ExchangeAccount) {
-    self.exchange_account = value
+    let balances = value.get_balances();
+    self.exchange_account = value;
+    self.set_exchange_balances(balances);
   }
 
   pub fn set_open_position(&mut self, position: Position) -> Result<(), DatabaseError> {
@@ -288,74 +281,6 @@ impl Database {
       "Statistics for {} missing on database lookup. Available keys: {:?}",
       core_id, keys
     )))
-  }
-
-  pub async fn run(
-    &mut self,
-    pairs: Vec<Pair>,
-    binance_client: BinanceClient,
-  ) -> Result<(), DatabaseError> {
-    log::info!("Database loop started.");
-    let stream_url = self.stream_url.clone();
-    let mut ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
-    let binance_client_clone = binance_client.clone();
-
-    // fetch latest account data
-    let account = get_account_from_exchange(binance_client).await?;
-    self.exchange_account = account.clone();
-    self.set_exchange_balances(account.get_balances());
-
-    let mut account_listener =
-      new_account_stream(&self.stream_url, binance_client_clone).await?;
-
-    // listen for further updates
-    loop {
-      match ticker.try_recv() {
-        Ok(event) => {
-          if let Err(e) = self.event_tx.send(Event::Market(event.clone())) {
-            let error_msg = format!("{:?}", e);
-            match e {
-              broadcast::error::SendError(event) => {
-                log::warn!(
-                  "Database can't send events back to the app. Error: {}. Event: {:?}",
-                  error_msg,
-                  event
-                );
-              },
-            }
-          }
-          match event.detail {
-            MarketEventDetail::Candle(candle) => {
-              let candles: Vec<Candle> = vec![candle];
-              let insert = self.add_candles(event.pair, candles).await;
-              match insert {
-                Ok(_) => log::info!("Inserted new candle."),
-                Err(e) => log::warn!("Error inserting candle: {:?}", e),
-              }
-            },
-            _ => (),
-          }
-        },
-        Err(e) => match e {
-          TryRecvError::Empty => {},
-          TryRecvError::Disconnected => {
-            log::error!("Ticker socket disconnected: {}", e);
-            break;
-          },
-        },
-      }
-      match account_listener.try_recv() {
-        Ok(balances) => self.set_exchange_balances(balances),
-        Err(e) => match e {
-          TryRecvError::Empty => {},
-          TryRecvError::Disconnected => {
-            log::error!("Account socket disconnected: {}", e);
-            break;
-          },
-        },
-      }
-    }
-    Ok(())
   }
 }
 

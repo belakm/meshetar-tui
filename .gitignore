@@ -1,6 +1,8 @@
 /target
 .data/*.log
 .config/env.toml
+.config/prv-key.pem
+.config/pub-key.pem
 /static
 database.sqlite
 database.sqlite-journal

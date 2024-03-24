@@ -1,6 +1,6 @@
 use crate::{
   action::{Action, MoveDirection, ScreenUpdate},
-  assets::{error::AssetError, MarketFeed, Pair},
+  assets::{asset_ticker, error::AssetError, MarketEvent, MarketFeed, Pair},
   components::{
     header::MeshetarHeader,
     style::{outer_container_block, stylized_block},
@@ -10,8 +10,10 @@ use crate::{
   database::{error::DatabaseError, Database},
   events::{Event, EventTx},
   exchange::{
+    account::{get_account_from_exchange, new_account_stream, ExchangeAccount},
     binance_client::{self, BinanceClient, BinanceClientError},
     error::ExchangeError,
+    ExchangeEvent,
   },
   mode::Mode,
   portfolio::{
@@ -190,15 +192,12 @@ impl App {
     let tui = tui::Tui::new()?.tick_rate(tick_rate).frame_rate(frame_rate);
     let use_testnet = read_config()?.use_testnet;
     let (action_tx, action_rx) = mpsc::unbounded_channel();
-    let (event_broadcast, event_rx) = broadcast::channel(20);
-    let database: Arc<Mutex<Database>> = Arc::new(Mutex::new(
-      Database::new(
-        event_broadcast.clone(),
-        ExchangeConfig::get_exchange_stream_url(use_testnet),
-      )
-      .await
-      .map_err(MainError::from)?,
-    ));
+    let (event_broadcast, mut event_rx) = broadcast::channel(20);
+    let binance_client = BinanceClient::new().await.map_err(MainError::from)?;
+    let binance_client_clone = binance_client.clone();
+    let pairs = vec![Pair::BTCUSDT, Pair::ETHBTC];
+    let database: Arc<Mutex<Database>> =
+      Arc::new(Mutex::new(Database::new().await.map_err(MainError::from)?));
     let portfolio: Arc<Mutex<Portfolio>> = Arc::new(Mutex::new(
       Portfolio::builder()
         .database(database.clone())
@@ -208,21 +207,117 @@ impl App {
         .build()
         .await?,
     ));
-    let binance_client = BinanceClient::new().await.map_err(MainError::from)?;
 
     screen.register_action_handler(action_tx.clone())?;
     screen.register_config_handler(config.clone())?;
     screen.init(tui.size()?)?;
 
-    let action_tx = action_tx.clone();
-    let pairs = vec![Pair::BTCUSDT, Pair::ETHBTC];
-    let db_clone = database.clone();
     let binance_client_clone = binance_client.clone();
+    let event_tx = event_broadcast.clone();
     tokio::spawn(async move {
-      match db_clone.lock().await.run(pairs, binance_client_clone).await {
-        Ok(_) => log::info!("Database run finished."),
-        Err(e) => log::error!("{}", e.to_string()),
+      let stream_url = ExchangeConfig::get_exchange_stream_url(use_testnet);
+      let binance_client_for_account = binance_client_clone.clone();
+      log::info!("Fething initial balances.");
+      match get_account_from_exchange(binance_client_for_account).await {
+        Ok(account) => {
+          if let Err(e) =
+            event_tx.send(Event::Exchange(ExchangeEvent::ExchangeAccount(account)))
+          {
+            log::warn!("Error sending account update.");
+          }
+        },
+        Err(e) => {
+          log::error!("{:?}", e);
+          return;
+        },
+      }
+      // GET CRYPTO TICKER
+      match asset_ticker::new_ticker(pairs, &stream_url).await {
+        Ok(mut ticker) => {
+          // GET ACCOUNT LISTENER
+          match new_account_stream(&stream_url, binance_client_clone).await {
+            Ok(mut account_listener) => {
+              log::info!("Database loop started.");
+              loop {
+                match ticker.try_recv() {
+                  Ok(market_event) => {
+                    if let Err(e) = event_tx.send(Event::Market(market_event)) {
+                      log::warn!("Error sending market event.");
+                    }
+                  },
+                  Err(e) => match e {
+                    mpsc::error::TryRecvError::Empty => {},
+                    mpsc::error::TryRecvError::Disconnected => {
+                      log::info!("Asset ticker disconnected.");
+                      return;
+                    },
+                  },
+                }
+                match account_listener.try_recv() {
+                  Ok(balances) => {
+                    if let Err(e) = event_tx.send(Event::Exchange(
+                      ExchangeEvent::ExchangeBalanceUpdate(balances),
+                    )) {
+                      log::warn!("Error sending account balance update");
+                    }
+                  },
+                  Err(e) => match e {
+                    mpsc::error::TryRecvError::Empty => continue,
+                    mpsc::error::TryRecvError::Disconnected => {
+                      log::info!("Asset ticker disconnected.");
+                      return;
+                    },
+                  },
+                }
+              }
+            },
+            Err(e) => {
+              log::error!("{:?}", e);
+              return;
+            },
+          }
+        },
+        Err(e) => {
+          log::error!("{:?}", e);
+          return;
+        },
       };
+    });
+
+    let db_clone = database.clone();
+    let event_tx = event_broadcast.clone();
+    tokio::spawn(async move {
+      loop {
+        match event_rx.try_recv() {
+          Ok(event) => match event {
+            Event::Exchange(exchange_event) => match exchange_event {
+              ExchangeEvent::ExchangeAccount(account) => {
+                let lock = db_clone.lock();
+                lock.await.set_exchange_account(account);
+              },
+              ExchangeEvent::ExchangeBalanceUpdate(balances) => {
+                let lock = db_clone.lock();
+                lock.await.set_exchange_balances(balances);
+              },
+              ExchangeEvent::Market(market_event) => {
+                if let Err(e) = event_tx.send(Event::Market(market_event)) {
+                  log::warn!("Error passing on event market update");
+                }
+              },
+            },
+            _ => {},
+          },
+          Err(e) => match e {
+            broadcast::error::TryRecvError::Lagged(n) => {
+              log::warn!("Event broadcast lagging behind {} events.", n);
+            },
+            broadcast::error::TryRecvError::Empty => {},
+            broadcast::error::TryRecvError::Closed => {
+              return;
+            },
+          },
+        }
+      }
     });
 
     Ok(Self {

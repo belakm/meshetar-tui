@@ -7,6 +7,7 @@ use tracing::{info, warn};
 use crate::{
   assets::{Candle, MarketEvent, MarketEventDetail},
   database::Database,
+  exchange::ExchangeEvent,
   portfolio::{
     balance::Balance,
     position::{Position, PositionExit, PositionUpdate},
@@ -27,6 +28,7 @@ pub enum Event {
   PositionNew(Position),
   PositionUpdate(PositionUpdate),
   PositionExit(PositionExit),
+  Exchange(ExchangeEvent),
 }
 
 // Messages to downstream consumers.
@@ -52,8 +54,6 @@ impl MessageTransmitter<Event> for EventTx {
     if self.receiver_dropped {
       return;
     }
-
-    log::info!("MSG {:?} {:?}", self.event_tx.is_closed(), message);
 
     if self.event_tx.send(message).is_err() {
       warn!(
@@ -81,29 +81,3 @@ impl EventTx {
     Self { receiver_dropped: false, event_tx }
   }
 }
-
-// pub async fn core_events_listener(
-//   mut event_receiver: mpsc::UnboundedReceiver<Event>,
-//   database: Arc<Mutex<Database>>,
-//   is_live: bool,
-// ) {
-//   while let Some(event) = event_receiver.recv().await {
-//     match event {
-//       Event::Market(ev) => match ev.detail {
-//         MarketEventDetail::Candle(candle) => {
-//           if is_live {
-//             let mut database = database.lock().await;
-//             let candles: Vec<Candle> = vec![candle];
-//             let insert = database.add_candles(ev.asset, candles).await;
-//             match insert {
-//               Ok(_) => info!("Inserted new candle."),
-//               Err(e) => warn!("Error inserting candle: {:?}", e),
-//             }
-//           }
-//         },
-//         _ => (), //info!("{:?}", ev),
-//       },
-//       _ => (), // info!("{:?}", event),
-//     }
-//   }
-// }

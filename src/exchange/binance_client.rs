@@ -1,10 +1,8 @@
+use super::error::ExchangeError;
 use crate::utils::load_config::{read_config, ConfigError, ExchangeConfig};
 use binance_spot_connector_rust::{http::Credentials, ureq::BinanceHttpClient};
-use hyper::client::HttpConnector;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
-use super::error::ExchangeError;
 
 #[derive(Clone)]
 pub struct BinanceClient {
@@ -59,8 +57,6 @@ impl BinanceClient {
     let key = key
       .into_body_str()
       .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
-
-    log::info!("{:?}", key);
 
     let key: BinanceRawKey = serde_json::from_str(&key)?;
     Ok(key.listen_key)

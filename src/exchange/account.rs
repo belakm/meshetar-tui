@@ -1,10 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use crate::{
   assets::Pair,
   events::Event,
   exchange::{binance_client::BinanceClient, error::ExchangeError},
   portfolio::balance::Balance,
+  utils::serde_utils::f64_from_string,
 };
 use binance_spot_connector_rust::{
   http::request::RequestBuilder, tokio_tungstenite::BinanceWebSocketClient,
@@ -16,9 +15,11 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 #[derive(Deserialize, Debug, Clone)]
 struct ExchangeAccountBalance {
-  a: String, //Asset
-  f: f64,    //Free
-  l: f64,    //Locked
+  a: String,
+  #[serde(deserialize_with = "f64_from_string")]
+  f: f64,
+  #[serde(deserialize_with = "f64_from_string")]
+  l: f64,
 }
 impl ExchangeAccountBalance {
   pub fn to_balance(&self) -> (String, Balance) {
@@ -58,7 +59,6 @@ pub async fn new_account_stream(
   conn.subscribe(vec![&stream.into()]).await;
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
-      log::info!("MSG: {:?}", message);
       match message {
         Ok(message) => {
           let data = message.into_data();
@@ -90,7 +90,9 @@ pub async fn new_account_stream(
 #[derive(Debug, Serialize, Deserialize)]
 struct ExchangeAccountBalanceFromRest {
   asset: String,
+  #[serde(deserialize_with = "f64_from_string")]
   free: f64,
+  #[serde(deserialize_with = "f64_from_string")]
   locked: f64,
 }
 
@@ -178,7 +180,6 @@ pub async fn get_account_from_exchange(
     .client
     .send(request)
     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;
-
   let res = res
     .into_body_str()
     .map_err(|e| ExchangeError::BinanceClientError(format!("{:?}", e)))?;

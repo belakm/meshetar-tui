@@ -2,8 +2,10 @@ pub mod account;
 pub mod binance_client;
 pub mod error;
 
+use self::account::ExchangeAccount;
 use self::binance_client::BinanceClient;
 use self::error::ExchangeError;
+use crate::assets::{MarketEvent, MarketEventDetail};
 use crate::portfolio::balance::Balance;
 use crate::utils::serde_utils::f64_default;
 use crate::{
@@ -22,6 +24,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+#[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+pub enum ExchangeEvent {
+  ExchangeAccount(ExchangeAccount),
+  ExchangeBalanceUpdate(Vec<(String, Balance)>),
+  Market(MarketEvent),
+}
 
 pub async fn fetch_candles(
   duration: Duration,

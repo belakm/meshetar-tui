@@ -10,7 +10,7 @@ authors = ["Mitja Belak"]
 
 [dependencies]
 better-panic = "0.3.0"
-binance_spot_connector_rust = { version = "1.0.0", features = [
+binance_spot_connector_rust = { version = "1.1.0", features = [
   "enable-hyper",
   "enable-tokio-tungstenite",
   "enable-ureq",
@@ -30,8 +30,6 @@ crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
 derive_deref = "1.1.1"
 directories = "5.0.1"
 futures = "0.3.28"
-hyper-tls = "0.5.0"
-hyper = "0.14.9"
 human-panic = "1.2.0"
 json5 = "0.4.1"
 lazy_static = "1.4.0"

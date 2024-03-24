@@ -58,6 +58,7 @@ impl MeshetarHeader {
     } else {
       DateTime::default()
     };
+
     f.render_widget(
       Paragraph::new(time_ago(time)).alignment(Alignment::Right),
       info_layout[2],

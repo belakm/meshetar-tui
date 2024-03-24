@@ -40,8 +40,10 @@ pub fn generate_petname() -> String {
 }
 
 pub fn duration_to_readable(duration: &Duration) -> String {
-  if duration.num_seconds() < 60 {
+  if duration.num_seconds() < 3 {
     "Just now".to_string()
+  } else if duration.num_seconds() < 60 {
+    format!("{}s", duration.num_seconds())
   } else if duration.num_minutes() < 60 {
     format!("{}m {}s", duration.num_minutes(), duration.num_seconds() % 60)
   } else if duration.num_hours() < 24 {
@@ -56,5 +58,7 @@ pub fn duration_to_readable(duration: &Duration) -> String {
 pub fn time_ago(input_time: DateTime<Utc>) -> String {
   let now = Utc::now();
   let duration = now.signed_duration_since(input_time);
-  duration_to_readable(&duration) + " ago"
+  let appendix =
+    if duration.num_seconds() < 3 { "".to_string() } else { " ago".to_string() };
+  duration_to_readable(&duration) + &appendix
 }

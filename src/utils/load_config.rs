@@ -11,7 +11,7 @@ impl UserConfig {
   pub fn to_config(&self) -> ExchangeConfig {
     ExchangeConfig {
       binance_api_key: self.binance_api_key.clone(),
-      binance_api_secret: self.binance_api_key.clone(),
+      binance_api_secret: self.binance_api_secret.clone(),
       use_testnet: self.use_testnet,
     }
   }
@@ -53,13 +53,11 @@ pub enum ConfigError {
   #[error("Problem setting configuration")]
   SetError,
 }
-// TODO: ditch the unwraps and emit ConfigError instead
 pub fn read_config() -> Result<ExchangeConfig, ConfigError> {
   let config_file =
     std::fs::read_to_string(".config/env.toml").map_err(|_| ConfigError::ReadError)?;
   let user_config: UserConfig =
     toml::from_str(&config_file).map_err(|_| ConfigError::SetError)?;
   let config = user_config.to_config();
-
   Ok(config)
 }
