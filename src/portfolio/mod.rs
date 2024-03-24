@@ -96,6 +96,9 @@ impl Portfolio {
       *signal_strength,
       max_value,
     );
+
+    log::info!("ORDER {:?}", order);
+
     // Manage global risk when evaluating OrderEvent - keep the same, refine or cancel
     Ok(self.risk_manager.evaluate_order(order))
   }

@@ -160,9 +160,15 @@ impl Trader {
             }
           },
           Event::Order(order) => {
-            let fill = self.execution.generate_fill(&order, self.trading_is_live).await?;
-            self.event_transmitter.send(Event::Fill(fill.clone()));
-            self.event_queue.push_back(Event::Fill(fill));
+            match self.execution.generate_fill(&order, self.trading_is_live).await {
+              Ok(fill) => {
+                self.event_transmitter.send(Event::Fill(fill.clone()));
+                self.event_queue.push_back(Event::Fill(fill));
+              },
+              Err(e) => {
+                log::error!("{:?}", e);
+              },
+            }
           },
           Event::Fill(fill) => {
             let fill_side_effect_events =

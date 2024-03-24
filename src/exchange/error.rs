@@ -7,6 +7,8 @@ pub enum ExchangeError {
   BinanceStreamError(String),
   #[error("Binance client error: {0}")]
   BinanceClientError(String),
+  #[error("Exchange didnt fill the order")]
+  UnfilledOrder,
   #[error("Failed to serialize/deserialize JSON due to: {0}")]
   JsonSerDe(#[from] serde_json::Error),
   #[error("Init failed {0}")]

@@ -118,6 +118,7 @@ impl App {
       HashMap::from([(core_configuration.pair, trader_command_transmitter)]);
     let event_rx = self.event_broadcast.subscribe();
 
+    let trader_client = self.binance_client.clone();
     traders.push(
       Trader::builder()
         .core_id(core_id)
@@ -127,7 +128,7 @@ impl App {
         .event_transmitter(event_transmitter)
         .portfolio(Arc::clone(&self.portfolio))
         .strategy(Strategy::new(core_configuration.pair, core_configuration.model_name))
-        .execution(Execution::new(core_configuration.exchange_fee))
+        .execution(Execution::new(core_configuration.exchange_fee, trader_client))
         .event_rx(event_rx)
         .build()?,
     );

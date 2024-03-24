@@ -1,6 +1,10 @@
 use super::error::TraderError;
 use crate::{
-  assets::{MarketMeta, Pair},
+  assets::{MarketMeta, Pair, Side},
+  exchange::{
+    binance_client::{self, BinanceClient},
+    execution::fill_order,
+  },
   portfolio::OrderEvent,
   strategy::Decision,
 };
@@ -9,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub struct Execution {
   exchange_fee: f64,
+  binance_client: BinanceClient,
 }
 
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug, Default, Deserialize, Serialize)]
@@ -23,12 +28,11 @@ impl Fees {
   }
 }
 
-/// Communicative type alias for Fee amount as f64.
 pub type FeeAmount = f64;
 
 impl Execution {
-  pub fn new(exchange_fee: f64) -> Self {
-    Execution { exchange_fee }
+  pub fn new(exchange_fee: f64, binance_client: BinanceClient) -> Self {
+    Execution { exchange_fee, binance_client }
   }
   pub async fn generate_fill(
     &self,
@@ -36,13 +40,18 @@ impl Execution {
     is_live_run: bool,
   ) -> Result<FillEvent, TraderError> {
     let fill_time = if is_live_run { Utc::now() } else { order.time };
+
+    let side = if order.decision.is_entry() { Side::Buy } else { Side::Sell };
+    let exchange_execution =
+      fill_order(&self.binance_client, order.pair.clone(), order.quantity, side)?;
+
     let fill_event = FillEvent::builder()
-      .time(fill_time)
+      .time(exchange_execution.updated_at)
       .asset(order.pair.clone())
       .market_meta(order.market_meta)
       .decision(order.decision)
-      .quantity(order.quantity)
-      .fill_value_gross(order.quantity.abs() * order.market_meta.close)
+      .quantity(exchange_execution.qty)
+      .fill_value_gross(exchange_execution.qty.abs() * exchange_execution.price)
       .fees(Fees { exchange: self.exchange_fee, slippage: 0.0 })
       .build()?;
     Ok(fill_event)
@@ -61,7 +70,6 @@ pub struct FillEvent {
 }
 
 impl FillEvent {
-  /// Returns a [`FillEventBuilder`] instance.
   pub fn builder() -> FillEventBuilder {
     FillEventBuilder::new()
   }

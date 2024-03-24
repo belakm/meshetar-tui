@@ -1545,6 +1545,7 @@ dependencies = [
  "prettytable-rs",
  "pyo3",
  "ratatui",
+ "rust_decimal",
  "serde",
  "serde_json",
  "signal-hook",

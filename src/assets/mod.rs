@@ -7,7 +7,11 @@ pub mod error;
 use self::{asset_ticker::KlineEvent, error::AssetError};
 use crate::{
   database::Database,
-  exchange::{binance_client::BinanceClient, error::ExchangeError, BinanceKline},
+  exchange::{
+    binance_client::{self, BinanceClient},
+    error::ExchangeError,
+    BinanceKline,
+  },
   strategy::Signal,
   utils::formatting::{dt_to_readable, timestamp_to_dt},
 };
@@ -148,6 +152,14 @@ pub struct PublicTrade {
 pub enum Side {
   Buy,
   Sell,
+}
+impl Side {
+  pub fn to_binance_side(&self) -> binance_spot_connector_rust::trade::order::Side {
+    match self {
+      Side::Buy => binance_spot_connector_rust::trade::order::Side::Buy,
+      Side::Sell => binance_spot_connector_rust::trade::order::Side::Sell,
+    }
+  }
 }
 
 pub struct MarketFeed {

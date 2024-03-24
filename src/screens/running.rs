@@ -96,9 +96,8 @@ impl Screen for Running {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(outer_container_block(), area);
     let content_layout = Layout::default()
-      .constraints(vec![Constraint::Length(1), Constraint::Min(0), Constraint::Length(3)])
+      .constraints(vec![Constraint::Length(2), Constraint::Min(0), Constraint::Length(3)])
       .split(area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
@@ -108,10 +107,6 @@ impl Screen for Running {
         Constraint::Percentage(40),
       ])
       .split(content_layout[2]);
-
-    // Balance
-    // Trades
-    // Change
 
     f.render_widget(
       Paragraph::new(format!("Running {}", self.core_id)),

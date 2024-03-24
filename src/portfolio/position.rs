@@ -288,11 +288,8 @@ impl PositionBuilder {
   }
 }
 
-/// Metadata detailing the trace UUIDs & timestamps associated with entering, updating & exiting
-/// a [`Position`].
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionMeta {
-  /// [`FillEvent`] timestamp that triggered the entering of this [`Position`].
   pub enter_time: DateTime<Utc>,
   pub update_time: DateTime<Utc>,
   pub exit_balance: Option<Balance>,
@@ -304,7 +301,6 @@ impl Default for PositionMeta {
   }
 }
 
-/// [`Position`] update event. Occurs as a result of receiving new [`MarketEvent`] data.
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionUpdate {
   pub position_id: String,
@@ -326,7 +322,6 @@ impl From<&mut Position> for PositionUpdate {
   }
 }
 
-/// [`Position`] exit event. Occurs as a result of a [`FillEvent`] that exits a [`Position`].
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionExit {
   pub position_id: String,

@@ -1,6 +1,7 @@
 pub mod account;
 pub mod binance_client;
 pub mod error;
+pub mod execution;
 
 use self::account::ExchangeAccount;
 use self::binance_client::BinanceClient;
