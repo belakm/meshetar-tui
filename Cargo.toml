@@ -24,7 +24,7 @@ clap = { version = "4.4.5", features = [
   "string",
   "unstable-styles",
 ] }
-color-eyre = "0.6.2"
+eyre = "0.6.12"
 config = "0.13.3"
 crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
 derive_deref = "1.1.1"

@@ -6,8 +6,8 @@ use crate::{
   },
   config::{Config, KeyBindings},
 };
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;

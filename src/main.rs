@@ -27,7 +27,7 @@ use crate::{
 };
 use clap::Parser;
 use cli::Cli;
-use color_eyre::eyre::Result;
+use eyre::Result;
 
 async fn tokio_main() -> Result<()> {
   initialize_logging()?;

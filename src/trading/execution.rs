@@ -39,6 +39,8 @@ impl Execution {
     order: &OrderEvent,
     is_live_run: bool,
   ) -> Result<FillEvent, TraderError> {
+    log::info!("Received a new order to fill: {:?}", order);
+
     let fill_time = if is_live_run { Utc::now() } else { order.time };
 
     let side = if order.decision.is_entry() { Side::Buy } else { Side::Sell };

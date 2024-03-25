@@ -4,7 +4,7 @@ pub mod list;
 pub mod report;
 pub mod style;
 
-use color_eyre::eyre::Result;
+use eyre::Result;
 use ratatui::prelude::*;
 
 pub trait ListDisplay {

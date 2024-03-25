@@ -12,8 +12,8 @@ use crate::{
   config::{Config, KeyBindings},
   core::Command,
 };
-use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};

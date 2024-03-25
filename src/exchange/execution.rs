@@ -56,14 +56,15 @@ pub fn fill_order(
     side
   );
 
-  // return Ok(ExchangeFill { qty, updated_at: Utc::now(), price: 66000.0 });
-
   let res = binance_client.client.send(request).map_err(|e| {
     ExchangeError::BinanceClientError(format!("Error on order fill: {:?}", e))
   })?;
   let res = res.into_body_str().map_err(|e| {
     ExchangeError::BinanceClientError(format!("Error parsing fill event res: {:?}", e))
   })?;
+
+  log::info!("RES string: {:?}", res);
+
   let res: ExchangeFillResponse =
     serde_json::from_str(&res).map_err(|e| ExchangeError::JsonSerDe(e))?;
   if res.status == "FILLED" {

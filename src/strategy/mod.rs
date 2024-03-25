@@ -13,7 +13,6 @@ use crate::{
   },
 };
 use chrono::{DateTime, Utc};
-use color_eyre::owo_colors::OwoColorize;
 use futures::TryFutureExt;
 use petname::Petnames;
 use pyo3::{prelude::*, types::PyModule};
@@ -261,7 +260,7 @@ impl ListDisplay for ModelMetadata {
     f: &mut ratatui::Frame<'_>,
     area: ratatui::prelude::Rect,
     active: bool,
-  ) -> color_eyre::eyre::Result<()> {
+  ) -> eyre::Result<()> {
     f.render_widget(Block::default().style(default_style(active)), area.clone());
     let row_layout = Layout::default()
       .direction(Direction::Horizontal)
@@ -311,7 +310,7 @@ impl ListDisplay for ModelMetadata {
     &mut self,
     f: &mut ratatui::Frame<'_>,
     area: ratatui::prelude::Rect,
-  ) -> color_eyre::eyre::Result<()> {
+  ) -> eyre::Result<()> {
     f.render_widget(Block::default().style(default_style(false)), area.clone());
     let header_style = Style::default().fg(DEFAULT_THEME.text_dimmed);
     let row_layout = Layout::default()
@@ -390,7 +389,7 @@ pub async fn generate_new_model(pair: Pair) -> Result<(), StrategyError> {
   }
 }
 
-pub fn get_generated_models() -> color_eyre::Result<Vec<ModelMetadata>> {
+pub fn get_generated_models() -> eyre::Result<Vec<ModelMetadata>> {
   let path = Path::new("models/generated");
   let mut metadata_list: Vec<ModelMetadata> = Vec::new();
   for entry in std::fs::read_dir(path)? {
@@ -413,7 +412,7 @@ pub fn get_generated_models() -> color_eyre::Result<Vec<ModelMetadata>> {
   Ok(metadata_list)
 }
 
-pub fn parse_model_metadata(contents: &str) -> color_eyre::Result<ModelMetadata> {
+pub fn parse_model_metadata(contents: &str) -> eyre::Result<ModelMetadata> {
   let value = contents.parse::<toml::Value>()?;
   let created_at: DateTime<Utc> = value
     .get("created_at")

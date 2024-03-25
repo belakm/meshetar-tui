@@ -4,8 +4,8 @@ use crate::{
   config::Config,
   tui::{Event, Frame},
 };
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
+use eyre::Result;
 use ratatui::layout::Rect;
 use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;

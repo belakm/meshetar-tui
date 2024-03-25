@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use eyre::Result;
 use ratatui::{
   prelude::{Constraint, Direction, Layout, Margin, Rect},
   style::{Color, Style, Stylize},

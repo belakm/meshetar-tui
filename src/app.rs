@@ -37,8 +37,8 @@ use crate::{
   utils::load_config::{self, read_config, ExchangeConfig},
 };
 use chrono::{DateTime, Utc};
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{
   layout::{Constraint, Layout, Margin},
   prelude::Rect,

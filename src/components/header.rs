@@ -1,14 +1,12 @@
-use std::default;
-
+use crate::utils::formatting::time_ago;
 use chrono::{DateTime, Utc};
-use color_eyre::eyre::Result;
+use eyre::Result;
 use ratatui::{
   layout::{Alignment, Constraint, Layout, Margin, Rect},
   widgets::Paragraph,
   Frame,
 };
-
-use crate::utils::formatting::time_ago;
+use std::default;
 
 #[derive(Default)]
 pub struct MeshetarHeader {

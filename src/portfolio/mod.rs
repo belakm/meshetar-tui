@@ -62,22 +62,18 @@ impl Portfolio {
     signal: &Signal,
     time_is_live: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
-    // Determine the position_id & associated Option<Position> related to input SignalEvent
     let position_id = determine_position_id(&core_id, &signal.pair);
     let position = { self.database.lock().await.get_open_position(&position_id)? };
-    // If signal is advising to open a new Position rather than close one, check we have cash
     if position.is_none() && self.no_cash_to_enter_new_position(core_id).await? {
       info!("No cash available to open a new position.");
       return Ok(None);
     }
-    // Parse signals from Strategy to determine net signal decision & associated strength
     let position = position.as_ref();
     let (signal_decision, signal_strength) =
       match parse_signal_decisions(&position, &signal.signals) {
         None => return Ok(None),
         Some(net_signal) => net_signal,
       };
-    // Construct mutable OrderEvent that can be modified by Allocation & Risk management
     let order_time = if time_is_live { Utc::now() } else { signal.time };
     let mut order = OrderEvent {
       time: order_time,
@@ -86,20 +82,15 @@ impl Portfolio {
       decision: *signal_decision,
       quantity: 1.0,
     };
-
-    let max_value = self.database.lock().await.get_balance(core_id).unwrap().available;
-
-    // Manage OrderEvent size allocation
+    let max_value =
+      { self.database.lock().await.get_balance(core_id).unwrap().available };
     self.allocation_manager.allocate_order(
       &mut order,
       position,
       *signal_strength,
       max_value,
     );
-
     log::info!("ORDER {:?}", order);
-
-    // Manage global risk when evaluating OrderEvent - keep the same, refine or cancel
     Ok(self.risk_manager.evaluate_order(order))
   }
   async fn no_cash_to_enter_new_position(

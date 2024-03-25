@@ -104,16 +104,18 @@ impl Trader {
       while let Some(event) = self.event_queue.pop_front() {
         match event {
           Event::Market(market_event) => {
-            match self.strategy.generate_signal(&market_event).await {
-              Ok(Some(signal)) => {
-                self.event_transmitter.send(Event::Signal(signal.clone()));
-                self.event_queue.push_back(Event::Signal(signal));
-              },
-              Ok(None) => { /* No signal = do nothing*/ },
-              Err(e) => {
-                error!("Exiting on strategy error. {}", e);
-                return Err(TraderError::from(e));
-              },
+            if market_event.pair == self.pair {
+              match self.strategy.generate_signal(&market_event).await {
+                Ok(Some(signal)) => {
+                  self.event_transmitter.send(Event::Signal(signal.clone()));
+                  self.event_queue.push_back(Event::Signal(signal));
+                },
+                Ok(None) => { /* No signal = do nothing*/ },
+                Err(e) => {
+                  error!("Exiting on strategy error. {}", e);
+                  return Err(TraderError::from(e));
+                },
+              }
             }
             if let Some(position_update) = self
               .portfolio

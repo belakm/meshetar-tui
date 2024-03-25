@@ -4,8 +4,8 @@ use crate::{
   components::style::{button, default_layout, outer_container_block, stylized_block},
   config::{Config, KeyBindings},
 };
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};

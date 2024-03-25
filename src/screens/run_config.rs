@@ -15,8 +15,8 @@ use crate::{
   strategy::{get_generated_models, ModelId},
 };
 use chrono::{DateTime, Duration, Utc};
-use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display};

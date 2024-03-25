@@ -11,8 +11,8 @@ use crate::{
   database::{error::DatabaseError, Database},
   statistic::TradingSummary,
 };
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc, time::Duration};
