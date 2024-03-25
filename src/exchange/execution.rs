@@ -2,7 +2,10 @@ use super::{
   binance_client::{self, BinanceClient},
   error::ExchangeError,
 };
-use crate::assets::{Pair, Side};
+use crate::{
+  assets::{Pair, Side},
+  utils::serde_utils::f64_from_string,
+};
 use binance_spot_connector_rust::trade::order::TimeInForce;
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::FromPrimitive;
@@ -15,6 +18,16 @@ pub struct ExchangeFill {
 }
 
 #[derive(Deserialize)]
+pub struct ExchangeFillResponseFill {
+  #[serde(deserialize_with = "f64_from_string")]
+  price: f64,
+  #[serde(deserialize_with = "f64_from_string")]
+  qty: f64,
+  #[serde(deserialize_with = "f64_from_string")]
+  commission: f64,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExchangeFillResponse {
   //   "symbol": "BTCUSDT",
@@ -22,11 +35,13 @@ pub struct ExchangeFillResponse {
   // "orderListId": -1, //Unless OCO, value will be -1
   // "clientOrderId": "6gCrw2kRUAF9CvJDGP16IP",
   transact_time: u64,
-  price: f64,
+  // price: f64,
   // "origQty": "10.00000000",
+  #[serde(deserialize_with = "f64_from_string")]
   executed_qty: f64,
   // "cummulativeQuoteQty": "10.00000000",
   status: String,
+  fills: Vec<ExchangeFillResponseFill>,
   // "timeInForce": "GTC",
   // "type": "MARKET",
   // "side": "SELL",
@@ -59,6 +74,7 @@ pub fn fill_order(
   let res = binance_client.client.send(request).map_err(|e| {
     ExchangeError::BinanceClientError(format!("Error on order fill: {:?}", e))
   })?;
+
   let res = res.into_body_str().map_err(|e| {
     ExchangeError::BinanceClientError(format!("Error parsing fill event res: {:?}", e))
   })?;
@@ -67,13 +83,23 @@ pub fn fill_order(
 
   let res: ExchangeFillResponse =
     serde_json::from_str(&res).map_err(|e| ExchangeError::JsonSerDe(e))?;
-  if res.status == "FILLED" {
+  let price = weighted_average_price(res.fills);
+  if res.status == "FILLED" && price.is_some() {
     Ok(ExchangeFill {
       qty: res.executed_qty,
       updated_at: DateTime::from_timestamp_millis(res.transact_time as i64).unwrap(),
-      price: res.price,
+      price: price.unwrap(),
     })
   } else {
     Err(ExchangeError::UnfilledOrder)
   }
+}
+
+fn weighted_average_price(fills: Vec<ExchangeFillResponseFill>) -> Option<f64> {
+  let total_weight: f64 = fills.iter().map(|fill| fill.qty).sum();
+  if total_weight == 0.0 {
+    return None;
+  }
+  let weighted_sum: f64 = fills.iter().map(|fill| fill.price * fill.qty).sum();
+  Some(weighted_sum / total_weight)
 }
