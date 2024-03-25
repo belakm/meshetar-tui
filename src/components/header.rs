@@ -3,7 +3,7 @@ use std::default;
 use chrono::{DateTime, Utc};
 use color_eyre::eyre::Result;
 use ratatui::{
-  layout::{Alignment, Constraint, Layout, Rect},
+  layout::{Alignment, Constraint, Layout, Margin, Rect},
   widgets::Paragraph,
   Frame,
 };
@@ -32,7 +32,7 @@ impl MeshetarHeader {
   }
   pub fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
     let layout = Layout::horizontal(vec![
-      Constraint::Length(24),
+      Constraint::Length(26),
       Constraint::Length(1),
       Constraint::Min(0),
     ])
@@ -43,7 +43,7 @@ impl MeshetarHeader {
       Constraint::Length(1),
     ])
     .split(layout[2]);
-    f.render_widget(logo(), layout[0]);
+    f.render_widget(logo(), layout[0].inner(&Margin { horizontal: 1, vertical: 0 }));
     f.render_widget(
       Paragraph::new(self.btc_valuation.to_string() + " ₿").alignment(Alignment::Right),
       info_layout[0],

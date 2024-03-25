@@ -373,13 +373,17 @@ impl App {
     self.tui.draw(|f| {
       let area = f.size();
       f.render_widget(outer_container_block(), area);
-      let layout = Layout::vertical(vec![Constraint::Length(3), Constraint::Min(0)])
-        .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
+      let layout = Layout::vertical(vec![
+        Constraint::Length(3),
+        Constraint::Length(1),
+        Constraint::Min(0),
+      ])
+      .split(area.inner(&Margin { horizontal: 1, vertical: 1 }));
       if let Err(e) = self.header.draw(f, layout[0]) {
         let action_tx = self.action_tx.clone();
         action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
       }
-      if let Err(e) = self.screen.draw(f, layout[1]) {
+      if let Err(e) = self.screen.draw(f, layout[2]) {
         let action_tx = self.action_tx.clone();
         action_tx.send(Action::Error(format!("Failed to draw: {:?}", e))).unwrap();
       }
@@ -400,7 +404,6 @@ impl App {
           tui::Event::Key(key) => {
             if let Some(keymap) = self.config.keybindings.get(&self.mode) {
               if let Some(action) = keymap.get(&vec![key]) {
-                log::info!("Got action: {action:?}");
                 action_tx.send(action.clone())?;
               }
             };
@@ -440,7 +443,7 @@ impl App {
         let action_clone_log = action.clone();
 
         if action_clone_log != Action::Tick && action_clone_log != Action::Render {
-          log::info!("{action:?}");
+          log::debug!("{action:?}");
         }
 
         match action {

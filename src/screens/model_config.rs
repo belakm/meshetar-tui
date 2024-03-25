@@ -101,7 +101,6 @@ impl Screen for ModelConfig {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(outer_container_block(), area);
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
       .split(area);
