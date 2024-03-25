@@ -265,7 +265,7 @@ impl App {
                   Err(e) => match e {
                     mpsc::error::TryRecvError::Empty => continue,
                     mpsc::error::TryRecvError::Disconnected => {
-                      log::info!("Asset ticker disconnected.");
+                      log::info!("Account listener disconnected.");
                       return;
                     },
                   },

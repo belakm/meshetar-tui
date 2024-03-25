@@ -9,6 +9,7 @@ use crate::{
   strategy::Decision,
 };
 use chrono::{DateTime, Utc};
+use rust_decimal::prelude::Signed;
 use serde::{Deserialize, Serialize};
 
 pub struct Execution {
@@ -45,7 +46,7 @@ impl Execution {
 
     let side = if order.decision.is_entry() { Side::Buy } else { Side::Sell };
     let exchange_execution =
-      fill_order(&self.binance_client, order.pair.clone(), order.quantity, side)?;
+      fill_order(&self.binance_client, order.pair.clone(), order.quantity.abs(), side)?;
 
     let fill_event = FillEvent::builder()
       .time(exchange_execution.updated_at)

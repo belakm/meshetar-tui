@@ -59,6 +59,7 @@ pub async fn new_account_stream(
   conn.subscribe(vec![&stream.into()]).await;
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
+      log::info!("MESSAGE {:?}", message);
       match message {
         Ok(message) => {
           let data = message.into_data();
