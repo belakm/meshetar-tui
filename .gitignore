@@ -9,3 +9,4 @@ summary.html
 /models/neural_net_model/*
 /models/neural_net_model
 /models/cutoffs.pickle
+.venv/*
