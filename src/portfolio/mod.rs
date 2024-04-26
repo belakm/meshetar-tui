@@ -1,4 +1,3 @@
-pub mod account;
 pub mod allocator;
 pub mod balance;
 pub mod error;
@@ -47,17 +46,6 @@ impl Portfolio {
   pub fn builder() -> PortfolioBuilder {
     PortfolioBuilder::new()
   }
-  pub async fn init_core_in_db(
-    &self,
-    core_id: Uuid,
-    starting_cash: f64,
-  ) -> Result<(), PortfolioError> {
-    self.database.lock().await.set_balance(
-      core_id,
-      Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
-    )?;
-    Ok(())
-  }
 
   pub async fn open_positions(
     &self,
@@ -74,41 +62,35 @@ impl Portfolio {
     signal: &Signal,
     time_is_live: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
-    // Determine the position_id & associated Option<Position> related to input SignalEvent
-    let position_id = determine_position_id(core_id, &signal.asset);
+    let position_id = determine_position_id(&core_id, &signal.pair);
     let position = { self.database.lock().await.get_open_position(&position_id)? };
-    // If signal is advising to open a new Position rather than close one, check we have cash
     if position.is_none() && self.no_cash_to_enter_new_position(core_id).await? {
       info!("No cash available to open a new position.");
       return Ok(None);
     }
-    // Parse signals from Strategy to determine net signal decision & associated strength
     let position = position.as_ref();
     let (signal_decision, signal_strength) =
       match parse_signal_decisions(&position, &signal.signals) {
         None => return Ok(None),
         Some(net_signal) => net_signal,
       };
-    // Construct mutable OrderEvent that can be modified by Allocation & Risk management
     let order_time = if time_is_live { Utc::now() } else { signal.time };
     let mut order = OrderEvent {
       time: order_time,
-      pair: signal.asset.clone(),
+      pair: signal.pair.clone(),
       market_meta: signal.market_meta,
       decision: *signal_decision,
       quantity: 1.0,
     };
-
-    let max_value = self.database.lock().await.get_balance(core_id).unwrap().available;
-
-    // Manage OrderEvent size allocation
+    let max_value =
+      { self.database.lock().await.get_balance(core_id).unwrap().available };
     self.allocation_manager.allocate_order(
       &mut order,
       position,
       *signal_strength,
       max_value,
     );
-    // Manage global risk when evaluating OrderEvent - keep the same, refine or cancel
+    log::info!("ORDER {:?}", order);
     Ok(self.risk_manager.evaluate_order(order))
   }
   async fn no_cash_to_enter_new_position(
@@ -131,7 +113,7 @@ impl Portfolio {
     live_trading: bool,
   ) -> Result<Option<OrderEvent>, PortfolioError> {
     // Determine PositionId associated with the SignalForceExit
-    let position_id = determine_position_id(core_id, &signal.asset);
+    let position_id = determine_position_id(&core_id, &signal.asset);
 
     // Retrieve Option<Position> associated with the PositionId
     let position = match self.database.lock().await.get_open_position(&position_id)? {
@@ -164,7 +146,7 @@ impl Portfolio {
     market: MarketEvent,
   ) -> Result<Option<PositionUpdate>, PortfolioError> {
     // Determine the position_id associated to the input MarketEvent
-    let position_id = determine_position_id(core_id, &market.asset);
+    let position_id = determine_position_id(&core_id, &market.pair);
     let mut database = self.database.lock().await;
     // Update Position if Portfolio has an open Position for that Symbol-Exchange combination
     if let Some(mut position) = database.get_open_position(&position_id)? {
@@ -187,7 +169,7 @@ impl Portfolio {
     let mut generated_events: Vec<Event> = Vec::with_capacity(2);
     let mut database = self.database.lock().await;
     let mut balance = database.get_balance(core_id)?;
-    let position_id = determine_position_id(core_id, &fill.asset);
+    let position_id = determine_position_id(&core_id, &fill.asset);
     balance.time = fill.time;
     match database.remove_position(&position_id)? {
       Some(mut position) => {
@@ -200,11 +182,11 @@ impl Portfolio {
         balance.total += position.realised_profit_loss;
 
         let asset = position.asset.clone();
-        let mut stats = database.get_statistics(&asset)?;
+        let mut stats = database.get_statistics(&core_id)?;
         stats.update(&position);
 
         // Persist exited Position & Updated Market statistics in Repository
-        database.set_statistics(asset.clone(), stats)?;
+        database.set_statistics(core_id, stats)?;
         database.set_exited_position(core_id, position)?;
       },
       None => {
@@ -221,36 +203,9 @@ impl Portfolio {
 
   pub async fn get_statistics(
     &mut self,
-    asset: &Pair,
+    core_id: &Uuid,
   ) -> Result<TradingSummary, DatabaseError> {
-    self.database.lock().await.get_statistics(asset)
-  }
-
-  pub async fn reset_statistics_with_time(
-    &mut self,
-    pair: Pair,
-    starting_time: DateTime<Utc>,
-  ) -> Result<(), PortfolioError> {
-    let mut database = self.database.lock().await;
-    database
-      .set_statistics(
-        pair,
-        TradingSummary::init(self.statistic_config, Some(starting_time)),
-      )
-      .map_err(PortfolioError::RepositoryInteraction)?;
-    Ok(())
-  }
-
-  pub async fn init_statistics_for_pair(
-    &self,
-    pair: Pair,
-    statistic_config: StatisticConfig,
-  ) -> Result<(), PortfolioError> {
-    let mut database = self.database.lock().await;
-    database
-      .set_statistics(pair, TradingSummary::init(statistic_config, None))
-      .map_err(PortfolioError::RepositoryInteraction)?;
-    Ok(())
+    self.database.lock().await.get_statistics(core_id)
   }
 }
 
@@ -285,7 +240,6 @@ pub struct PortfolioBuilder {
   allocation_manager: Option<Allocator>,
   risk_manager: Option<RiskEvaluator>,
   statistic_config: Option<StatisticConfig>,
-  assets: Option<Vec<Pair>>,
 }
 
 impl PortfolioBuilder {
@@ -295,7 +249,6 @@ impl PortfolioBuilder {
       allocation_manager: None,
       risk_manager: None,
       statistic_config: None,
-      assets: None,
     }
   }
   pub fn database(self, database: Arc<Mutex<Database>>) -> Self {
@@ -309,9 +262,6 @@ impl PortfolioBuilder {
   }
   pub fn statistic_config(self, value: StatisticConfig) -> Self {
     Self { statistic_config: Some(value), ..self }
-  }
-  pub fn assets(self, value: Vec<Pair>) -> Self {
-    Self { assets: Some(value), ..self }
   }
   pub async fn build(self) -> Result<Portfolio, PortfolioError> {
     let portfolio = Portfolio {

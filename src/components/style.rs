@@ -1,8 +1,14 @@
+use std::u8;
+
+use chrono::{DateTime, Utc};
 use ratatui::{
   prelude::{Alignment, Constraint, Direction, Layout, Rect},
   style::{Color, Modifier, Style},
   widgets::{Block, BorderType, Borders, Padding, Paragraph},
+  Frame,
 };
+
+use crate::utils::formatting::time_ago;
 
 pub struct Theme {
   pub bg: Color,
@@ -19,23 +25,25 @@ pub struct Theme {
   pub text_selected: Color,
   pub text_button: Color,
   pub text_button_selected: Color,
+  pub brand: Color,
 }
 
 pub static DEFAULT_THEME: Theme = Theme {
-  bg: Color::Indexed(234),
-  bg_button: Color::Indexed(236),
-  bg_button_selected: Color::Indexed(178),
-  bg_action_field: Color::Indexed(236),
-  bg_action_field_active: Color::Indexed(233),
-  bg_action_field_error: Color::Indexed(52),
-  border: Color::Indexed(250),
-  border_active: Color::Green,
-  text_dimmed: Color::Indexed(240),
-  text: Color::Indexed(252),
-  text_critical: Color::Red,
-  text_selected: Color::White,
-  text_button: Color::Indexed(252),
-  text_button_selected: Color::Black,
+  bg: Color::Indexed(233),
+  bg_button: Color::Indexed(10),
+  bg_button_selected: Color::Indexed(34),
+  bg_action_field: Color::Indexed(234),
+  bg_action_field_active: Color::Indexed(236),
+  bg_action_field_error: Color::Indexed(13),
+  border: Color::Indexed(130),
+  border_active: Color::Indexed(130),
+  text_dimmed: Color::Indexed(7),
+  text: Color::Indexed(15),
+  text_critical: Color::Indexed(207),
+  text_selected: Color::Indexed(220),
+  text_button: Color::Indexed(0),
+  text_button_selected: Color::Indexed(16),
+  brand: Color::Indexed(220),
 };
 
 pub fn stylized_block<'a>(selected: bool) -> Block<'a> {
@@ -76,7 +84,7 @@ pub fn default_action_block_style(active: bool, error: bool) -> Style {
 }
 
 pub fn header_style() -> Style {
-  Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.bg_button_selected)
+  Style::default().bg(DEFAULT_THEME.bg).fg(DEFAULT_THEME.brand)
 }
 
 pub fn stylized_button<'a>(selected: bool) -> Block<'a> {
@@ -124,7 +132,7 @@ pub fn outer_container_block<'a>() -> Block<'a> {
 }
 
 pub fn input_block<'a>(active: bool, error: bool) -> Block<'a> {
-  Block::new().borders(Borders::BOTTOM).style(default_action_block_style(active, error))
+  Block::new().style(default_action_block_style(active, error))
 }
 
 pub fn default_layout(area: Rect) -> (Rect, Rect) {
@@ -132,13 +140,6 @@ pub fn default_layout(area: Rect) -> (Rect, Rect) {
     .constraints(vec![Constraint::Length(4), Constraint::Max(2), Constraint::Min(0)])
     .split(area);
   (layout[0], layout[2])
-}
-
-pub fn logo<'a>() -> Paragraph<'a> {
-  let title = r#"╔╦╗╔═╗╔═╗╦ ╦╔═╗╔╦╗╔═╗╦═╗
-║║║║╣ ╚═╗╠═╣║╣  ║ ╠═╣╠╦╝
-╩ ╩╚═╝╚═╝╩ ╩╚═╝ ╩ ╩ ╩╩╚═"#;
-  Paragraph::new(title).alignment(Alignment::Center).style(header_style())
 }
 
 pub fn default_header<'a>(text: &'a str) -> Paragraph<'a> {

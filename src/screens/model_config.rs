@@ -6,28 +6,19 @@ use crate::{
     form::input::Input,
     style::{
       button, button_style, centered_text, default_action_block_style, default_header,
-      default_layout, logo, outer_container_block, stylized_block,
+      default_layout, outer_container_block, stylized_block,
     },
   },
   config::{Config, KeyBindings},
   core::Command,
 };
-use color_eyre::{eyre::Result, owo_colors::OwoColorize};
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use strum::{EnumCount, EnumIter, IntoEnumIterator};
 use tokio::sync::mpsc::UnboundedSender;
-
-#[derive(Default, Serialize, Clone, PartialEq, Debug)]
-pub struct CoreConfiguration {
-  pub run_live: bool,
-  pub n_days_to_fetch: u64,
-  pub starting_equity: f64,
-  pub backtest_last_n_candles: usize,
-  pub exchange_fee: f64,
-}
 
 #[derive(Default, PartialEq, EnumIter, EnumCount, Clone)]
 enum SelectedField {
@@ -110,13 +101,9 @@ impl Screen for ModelConfig {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(outer_container_block(), area);
-    let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
-    let (header_area, content_area) = default_layout(inner_area);
-    f.render_widget(logo(), header_area);
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
-      .split(content_area);
+      .split(area);
     let form_layout = Layout::default()
       .constraints(vec![Constraint::Length(4), Constraint::Min(0)])
       .split(content_layout[0]);

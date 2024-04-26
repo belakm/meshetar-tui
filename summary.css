@@ -1,0 +1,29 @@
+html, body {
+  background: #333;
+  color: white;
+}
+/* Basic Table Styles */
+table {
+  width: 100%; /* Full-width */
+  border-collapse: collapse; /* Collapse borders */
+  font-family: Arial, sans-serif; /* Font style */
+  margin-bottom: 20px;
+}
+
+/* Zebra Striping for Rows */
+table tr:nth-child(even) {
+  background-color: rgba(255,255,255,0.08);
+}
+
+/* Table Headers */
+th {
+  color: white;
+  text-align: left;
+  padding: 8px; /* Padding for header cells */
+}
+
+/* Table Cells */
+td {
+  border: 1px solid #ddd; /* Border for each cell */
+  padding: 8px; /* Padding for each cell */
+}

@@ -12,8 +12,8 @@ use uuid::Uuid;
 use super::balance::Balance;
 
 pub type PositionId = String;
-pub fn determine_position_id(core_id: Uuid, asset: &Pair) -> PositionId {
-  format!("{}_{}_position", core_id, asset)
+pub fn determine_position_id(core_id: &Uuid, pair: &Pair) -> PositionId {
+  format!("{}_{}_position", core_id, pair)
 }
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct Position {
@@ -78,7 +78,7 @@ impl Position {
   pub fn calculate_profit_loss_return(&self) -> f64 {
     self.realised_profit_loss / self.enter_value_gross
   }
-  pub fn enter(engine_id: Uuid, fill: &FillEvent) -> Result<Position, PortfolioError> {
+  pub fn enter(core_id: Uuid, fill: &FillEvent) -> Result<Position, PortfolioError> {
     let metadata = PositionMeta {
       enter_time: fill.market_meta.time,
       update_time: fill.time,
@@ -88,7 +88,7 @@ impl Position {
     let enter_avg_price_gross = Position::calculate_avg_price_gross(fill);
     let unrealised_profit_loss = -enter_fees_total * 2.0;
     Ok(Position {
-      position_id: determine_position_id(engine_id, &fill.asset),
+      position_id: determine_position_id(&core_id, &fill.asset),
       asset: fill.asset.clone(),
       meta: metadata,
       side: Position::parse_entry_side(fill)?,
@@ -288,11 +288,8 @@ impl PositionBuilder {
   }
 }
 
-/// Metadata detailing the trace UUIDs & timestamps associated with entering, updating & exiting
-/// a [`Position`].
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionMeta {
-  /// [`FillEvent`] timestamp that triggered the entering of this [`Position`].
   pub enter_time: DateTime<Utc>,
   pub update_time: DateTime<Utc>,
   pub exit_balance: Option<Balance>,
@@ -304,7 +301,6 @@ impl Default for PositionMeta {
   }
 }
 
-/// [`Position`] update event. Occurs as a result of receiving new [`MarketEvent`] data.
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionUpdate {
   pub position_id: String,
@@ -326,7 +322,6 @@ impl From<&mut Position> for PositionUpdate {
   }
 }
 
-/// [`Position`] exit event. Occurs as a result of a [`FillEvent`] that exits a [`Position`].
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct PositionExit {
   pub position_id: String,

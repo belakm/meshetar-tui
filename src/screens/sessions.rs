@@ -1,17 +1,16 @@
 use super::{Screen, ScreenId};
 use crate::{
   action::Action,
-  components::style::{
-    button, default_layout, logo, outer_container_block, stylized_block,
-  },
+  components::style::{button, default_layout, outer_container_block, stylized_block},
   config::{Config, KeyBindings},
 };
-use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use tokio::sync::mpsc::UnboundedSender;
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct Sessions {
@@ -38,7 +37,9 @@ impl Screen for Sessions {
 
   fn update(&mut self, action: Action) -> Result<Option<Action>> {
     match action {
-      Action::Tick => {},
+      Action::Tick => {
+        // Get stats
+      },
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
           command_tx.send(Action::Navigate(ScreenId::HOME))?;
@@ -50,13 +51,9 @@ impl Screen for Sessions {
   }
 
   fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
-    f.render_widget(outer_container_block(), area);
-    let inner_area = area.inner(&Margin { horizontal: 2, vertical: 2 });
-    let (header_area, content_area) = default_layout(inner_area);
-    f.render_widget(logo(), header_area);
     let content_layout = Layout::default()
       .constraints(vec![Constraint::Min(0), Constraint::Length(3)])
-      .split(content_area);
+      .split(area);
     let button_layout = Layout::default()
       .direction(Direction::Horizontal)
       .constraints(vec![

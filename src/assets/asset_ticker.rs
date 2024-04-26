@@ -1,4 +1,5 @@
-use crate::utils::{binance_client::BINANCE_WSS_BASE_URL, serde_utils::f64_from_string};
+use super::{error::AssetError, Candle, MarketEvent, MarketEventDetail, Pair};
+use crate::{exchange::error::ExchangeError, utils::serde_utils::f64_from_string};
 use binance_spot_connector_rust::{
   market::klines::KlineInterval, market_stream::kline::KlineStream,
   tokio_tungstenite::BinanceWebSocketClient,
@@ -6,10 +7,9 @@ use binance_spot_connector_rust::{
 use chrono::{TimeZone, Utc};
 use futures::{StreamExt, TryFutureExt};
 use serde::Deserialize;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use std::str::FromStr;
+use tokio::sync::mpsc::{self, error::SendError, UnboundedReceiver};
 use tracing::{info, warn};
-
-use super::{error::AssetError, Candle, MarketEvent, MarketEventDetail, Pair};
 
 #[allow(non_snake_case)]
 #[derive(Debug, Deserialize)]
@@ -59,38 +59,54 @@ pub struct KlineDetail {
 }
 
 pub async fn new_ticker(
-  pair: Pair,
-) -> Result<UnboundedReceiver<MarketEvent>, AssetError> {
+  pairs: Vec<Pair>,
+  stream_url: &str,
+) -> Result<UnboundedReceiver<MarketEvent>, ExchangeError> {
   let (tx, rx) = mpsc::unbounded_channel();
-  let (mut conn, _) = BinanceWebSocketClient::connect_async(BINANCE_WSS_BASE_URL)
-    .map_err(|e| AssetError::BinanceStreamError(e.to_string()))
+  let (mut conn, _) = BinanceWebSocketClient::connect_async(stream_url)
+    .map_err(|e| ExchangeError::BinanceStreamError(e.to_string()))
     .await?;
 
-  let subscription = conn
-    .subscribe(vec![&KlineStream::new(&pair.to_string(), KlineInterval::Minutes1).into()])
-    .await;
-
-  info!("Connected to string {} with message_id {}", pair.to_string(), subscription);
+  for pair in pairs {
+    conn
+      .subscribe(vec![
+        &KlineStream::new(&pair.to_string(), KlineInterval::Minutes1).into()
+      ])
+      .await;
+  }
 
   tokio::spawn(async move {
     while let Some(message) = conn.as_mut().next().await {
       match message {
         Ok(message) => {
           let data = message.into_data();
-          let string_data = String::from_utf8(data).expect("Found invalid UTF-8 chars");
-          let raw_asset_parse: Result<KlineEvent, serde_json::Error> =
-            serde_json::from_str(&string_data);
-          match raw_asset_parse {
-            Ok(new_kline) => {
-              let _ = tx.send(MarketEvent {
-                time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
-                asset: pair.clone(),
-                detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
-              });
-            },
-            Err(e) => {
-              warn!("Error parsing asset feed event: {}", e);
-            },
+          if let Ok(string_data) = String::from_utf8(data) {
+            let raw_asset_parse: Result<KlineEvent, serde_json::Error> =
+              serde_json::from_str(&string_data);
+            match raw_asset_parse {
+              Ok(new_kline) => {
+                if let Ok(pair) = Pair::from_str(&new_kline.symbol) {
+                  if let Err(e) = tx.send(MarketEvent {
+                    time: Utc.timestamp_opt(new_kline.E, 0).unwrap(),
+                    pair,
+                    detail: MarketEventDetail::Candle(Candle::from(&new_kline)),
+                  }) {
+                    let e_msg = e.to_string();
+                    match e {
+                      SendError(market_event) => {
+                        log::error!("Mystery market feed error: {}", e_msg);
+                        break;
+                      },
+                    }
+                  };
+                } else {
+                  log::warn!("Couldn't parse Pair from websocket kline.")
+                };
+              },
+              Err(e) => {
+                warn!("Error parsing asset feed event: {}", e);
+              },
+            }
           }
         },
         Err(e) => warn!("Error recieving on PRICE SOCKET: {:?}", e),

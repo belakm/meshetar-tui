@@ -1,6 +1,6 @@
 use super::{Screen, ScreenId};
 use crate::{
-  action::{Action, ScreenUpdate},
+  action::{Action, MoveDirection, ScreenUpdate},
   components::{
     list::{LabelValueItem, List},
     style::{button, default_layout, outer_container_block, stylized_block},
@@ -21,20 +21,20 @@ use tokio::sync::{
 use uuid::Uuid;
 
 #[derive(Default)]
-pub struct Report {
+pub struct Exchange {
   command_tx: Option<UnboundedSender<Action>>,
   config: Config,
-  short_report_list: Option<List<LabelValueItem<String>>>,
-  core_id: Uuid,
+  balances_list: List<LabelValueItem<f64>>,
+  selected_action: usize,
 }
 
-impl Report {
-  pub fn new(core_id: Uuid) -> Self {
-    Self { core_id, ..Self::default() }
+impl Exchange {
+  pub fn new() -> Self {
+    Self { ..Self::default() }
   }
 }
 
-impl Screen for Report {
+impl Screen for Exchange {
   fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
     self.command_tx = Some(tx);
     Ok(())
@@ -50,16 +50,17 @@ impl Screen for Report {
       Action::Tick => {},
       Action::Accept => {
         if let Some(command_tx) = &self.command_tx {
-          command_tx.send(Action::Navigate(ScreenId::SESSIONS))?;
+          command_tx.send(Action::Navigate(ScreenId::HOME))?;
         }
       },
       Action::ScreenUpdate(update) => match update {
-        ScreenUpdate::Report(report) => {
-          // let mut list = List::default();
-          // list.update_items(report.g());
-          // self.short_report_list = Some(list)
-        },
         _ => {},
+      },
+      Action::Move(direction) => match direction {
+        MoveDirection::Up => self.balances_list.previous(),
+        MoveDirection::Down => self.balances_list.next(),
+        MoveDirection::Left => self.selected_action = 0,
+        MoveDirection::Right => self.selected_action = 1,
       },
       _ => {},
     }
@@ -71,9 +72,11 @@ impl Screen for Report {
       .constraints(vec![Constraint::Length(2), Constraint::Min(0), Constraint::Length(3)])
       .split(area);
     let button_layout = Layout::horizontal(vec![
-      Constraint::Percentage(40),
+      Constraint::Percentage(30),
       Constraint::Percentage(20),
-      Constraint::Percentage(40),
+      Constraint::Length(1),
+      Constraint::Percentage(20),
+      Constraint::Percentage(30),
     ])
     .split(content_layout[2]);
     f.render_widget(
@@ -81,10 +84,9 @@ impl Screen for Report {
       content_layout[0],
     );
 
-    // if let Some(short_report_list) = &mut self.short_report_list {
-    //   short_report_list.draw(f, content_layout[1])?;
-    // }
+    self.balances_list.draw(f, content_layout[0])?;
     f.render_widget(button("Back", true), button_layout[1]);
+    f.render_widget(button("1000 USDT", true), button_layout[3]);
     Ok(())
   }
 }

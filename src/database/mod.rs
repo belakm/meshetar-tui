@@ -3,173 +3,59 @@ pub mod sqlite;
 
 use self::{error::DatabaseError, sqlite::DB_POOL};
 use crate::{
-  assets::{Candle, Pair},
+  assets::{
+    asset_ticker::{self, KlineDetail},
+    error::AssetError,
+    Candle, MarketEvent, MarketEventDetail, Pair,
+  },
+  components::list::LabelValueItem,
+  events::Event,
+  exchange::{
+    account::{self, get_account_from_exchange, new_account_stream, ExchangeAccount},
+    binance_client::{self, BinanceClient},
+  },
   portfolio::{
-    account::Account,
-    balance::{
-      Balance, BalanceId, ExchangeBalance, ExchangeBalanceAsset, ExchangeBalanceSheet,
-    },
+    balance::{Balance, BalanceId},
     position::{determine_position_id, Position, PositionId},
   },
   statistic::TradingSummary,
+  utils::formatting::duration_to_readable,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use std::collections::HashMap;
+use tokio::sync::{
+  broadcast,
+  mpsc::{
+    self,
+    error::{SendError, TryRecvError},
+    Receiver, Sender,
+  },
+  Mutex,
+};
 use uuid::Uuid;
 
 pub struct Database {
   open_positions: HashMap<PositionId, Position>,
   closed_positions: HashMap<String, Vec<Position>>,
   current_balances: HashMap<BalanceId, Balance>,
-  statistics: HashMap<Pair, TradingSummary>,
+  exchange_balances: HashMap<String, Balance>,
+  statistics: HashMap<Uuid, TradingSummary>,
+  exchange_account: ExchangeAccount,
+  asset_prices: HashMap<String, KlineDetail>,
 }
 impl Database {
   pub async fn new() -> Result<Database, DatabaseError> {
     sqlite::initialize().await?;
-    Ok(Database {
+    let database = Database {
       open_positions: HashMap::new(),
       closed_positions: HashMap::new(),
       current_balances: HashMap::new(),
+      exchange_balances: HashMap::new(),
       statistics: HashMap::new(),
-    })
-  }
-
-  pub async fn set_exchange_balance(
-    &mut self,
-    balance: ExchangeBalance,
-  ) -> Result<(), DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let mut tx = connection.begin().await?;
-    let timestamp: String = DateTime::to_rfc3339(&Utc::now());
-    let balance_sheet: ExchangeBalanceSheet = sqlx::query_as(
-        "INSERT INTO balance_sheets (timestamp, btc_valuation, busd_valuation) VALUES (?1, 0.0, 0.0) RETURNING *",
-    )
-    .bind(timestamp)
-    .fetch_one(connection)
-    .await.map_err(|_| DatabaseError::ReadError)?;
-
-    // Insert snapshot data
-    for balance in balance.balances {
-      sqlx::query(
-                "INSERT INTO balances (asset, free, locked, balance_sheet_id, btc_valuation) 
-                VALUES (
-                    ?1, 
-                    ?2, 
-                    ?3, 
-                    ?4,
-                        CASE WHEN ?1 = 'BTC' THEN ?2 -- get valuation from ticker otherwise default 
-                        ELSE COALESCE((SELECT last_price FROM asset_ticker WHERE symbol = ?5), 0) * ?6
-                        END
-                    )",
-            )
-            .bind(&balance.asset)
-            .bind(&balance.free)
-            .bind(&balance.locked)
-            .bind(&balance_sheet.id)
-            .bind(&format!("{}{}", balance.asset.to_string(), "BTC"))
-            .bind(&balance.free)
-            .execute(tx.as_mut())
-            .await?;
-    }
-
-    sqlx::query(
-      "UPDATE balance_sheets
-            SET btc_valuation = (
-                SELECT SUM(btc_valuation)
-                FROM balances
-                WHERE balance_sheet_id = ?1
-            ),
-            busd_valuation = (
-                SELECT SUM(btc_valuation) * asset_ticker.last_price
-                FROM balances
-                LEFT JOIN asset_ticker ON asset_ticker.symbol = 'BTCBUSD'
-                WHERE balance_sheet_id = ?1
-            )
-            WHERE id = ?1",
-    )
-    .bind(&balance_sheet.id)
-    .execute(tx.as_mut())
-    .await?;
-
-    tx.commit().await?;
-
-    // Commit transaction
-    Ok(())
-  }
-
-  pub async fn get_exchange_balance(&mut self) -> Result<ExchangeBalance, DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let balance_sheet: ExchangeBalanceSheet = sqlx::query_as(
-      "SELECT * FROM balance_sheets WHERE id = (SELECT MAX(id) FROM balance_sheets)",
-    )
-    .fetch_one(connection)
-    .await
-    .map_err(|_| DatabaseError::ReadError)?;
-
-    let query = &format!(
-      "SELECT * 
-            FROM balances
-            WHERE balance_sheet_id = {:?}",
-      &balance_sheet.id
-    );
-    let balances: Vec<ExchangeBalanceAsset> = sqlx::query_as(query)
-      .fetch_all(connection)
-      .await
-      .map_err(|_| DatabaseError::ReadError)?;
-
-    Ok(ExchangeBalance {
-      timestamp: balance_sheet.timestamp,
-      btc_valuation: balance_sheet.btc_valuation,
-      busd_valuation: balance_sheet.busd_valuation,
-      balances,
-    })
-  }
-
-  pub async fn set_account(&mut self, account: Account) -> Result<(), DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    sqlx::query(
-      "INSERT OR REPLACE INTO account (
-            maker_commission,
-            taker_commission,
-            buyer_commission,
-            seller_commission,
-            can_trade,
-            can_withdraw,
-            can_deposit,
-            brokered,
-            require_self_rade_prevention,
-            prevent_sor,
-            update_time,
-            account_type,
-            uid
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-    )
-    .bind(account.maker_commission)
-    .bind(account.taker_commission)
-    .bind(account.buyer_commission)
-    .bind(account.seller_commission)
-    .bind(account.can_trade)
-    .bind(account.can_withdraw)
-    .bind(account.can_deposit)
-    .bind(account.brokered)
-    .bind(account.require_self_rade_prevention)
-    .bind(account.prevent_sor)
-    .bind(account.update_time)
-    .bind(account.account_type.clone())
-    .bind(account.uid)
-    .execute(connection)
-    .await?;
-    Ok(())
-  }
-
-  pub async fn get_account(&mut self, uid: i64) -> Result<Account, DatabaseError> {
-    let connection = DB_POOL.get().unwrap();
-    let account: Account = sqlx::query_as("SELECT * FROM account WHERE uid = $1")
-      .bind(uid)
-      .fetch_one(connection)
-      .await
-      .map_err(|_| DatabaseError::ReadError)?;
-    Ok(account)
+      exchange_account: ExchangeAccount::default(),
+      asset_prices: HashMap::new(),
+    };
+    Ok(database)
   }
 
   pub fn set_balance(
@@ -182,11 +68,41 @@ impl Database {
   }
 
   pub fn get_balance(&mut self, core_id: Uuid) -> Result<Balance, DatabaseError> {
-    self
-      .current_balances
-      .get(&Balance::balance_id(core_id))
-      .copied()
-      .ok_or(DatabaseError::DataMissing)
+    self.current_balances.get(&Balance::balance_id(core_id)).copied().ok_or(
+      DatabaseError::DataMissing(format!(
+        "Balance for {} missing on database lookup.",
+        core_id
+      )),
+    )
+  }
+
+  pub fn set_exchange_balances(&mut self, exchange_balances: Vec<(String, Balance)>) {
+    for (asset_name, balance) in exchange_balances {
+      self.exchange_balances.insert(asset_name, balance);
+    }
+  }
+
+  pub fn get_exchange_balances(&self) -> HashMap<String, Balance> {
+    self.exchange_balances.clone()
+  }
+
+  pub fn get_valuation(&self) -> (f64, f64) {
+    // TODO: add all other cryptos
+    let btc_valuation =
+      self.exchange_balances.get("BTC").unwrap_or(&Balance::default()).available;
+    let usdt_valuation =
+      self.exchange_balances.get("USDT").unwrap_or(&Balance::default()).available;
+    (btc_valuation, usdt_valuation)
+  }
+
+  pub fn get_exchange_account(&self) -> ExchangeAccount {
+    self.exchange_account.clone()
+  }
+
+  pub fn set_exchange_account(&mut self, value: ExchangeAccount) {
+    let balances = value.get_balances();
+    self.exchange_account = value;
+    self.set_exchange_balances(balances);
   }
 
   pub fn set_open_position(&mut self, position: Position) -> Result<(), DatabaseError> {
@@ -203,16 +119,16 @@ impl Database {
 
   pub fn get_open_positions(
     &mut self,
-    core_id: Uuid,
-    assets: Vec<Pair>,
+    core_id: &Uuid,
+    pairs: Vec<Pair>,
   ) -> Result<Vec<Position>, DatabaseError> {
     Ok(
-      assets
+      pairs
         .into_iter()
-        .filter_map(|asset| {
+        .filter_map(|pair| {
           self
             .open_positions
-            .get(&determine_position_id(core_id, &asset))
+            .get(&determine_position_id(core_id, &pair))
             .map(Position::clone)
         })
         .collect(),
@@ -246,7 +162,6 @@ impl Database {
     position: Position,
   ) -> Result<(), DatabaseError> {
     let exited_positions_key = determine_exited_positions_id(core_id);
-
     match self.closed_positions.get_mut(&exited_positions_key) {
       None => {
         self.closed_positions.insert(exited_positions_key, vec![position]);
@@ -313,15 +228,59 @@ impl Database {
 
   pub fn set_statistics(
     &mut self,
-    pair: Pair,
+    core_id: Uuid,
     statistic: TradingSummary,
   ) -> Result<(), DatabaseError> {
-    self.statistics.insert(pair, statistic);
+    self.statistics.insert(core_id, statistic);
     Ok(())
   }
 
-  pub fn get_statistics(&mut self, pair: &Pair) -> Result<TradingSummary, DatabaseError> {
-    self.statistics.get(pair).copied().ok_or(DatabaseError::DataMissing)
+  pub fn generate_run_overview(
+    &mut self,
+    core_id: &Uuid,
+    pair: &Pair,
+  ) -> Result<Vec<LabelValueItem<String>>, DatabaseError> {
+    let duration = if let Some(stats) = self.statistics.get(core_id) {
+      Utc::now() - stats.starting_time
+    } else {
+      Duration::nanoseconds(0)
+    };
+    let open_trades = self.get_open_positions(core_id, vec![pair.clone().to_owned()]);
+    let closed_positions = self.get_exited_positions(core_id.clone().to_owned());
+    let n_closed_positions = {
+      if let Ok(trades) = closed_positions {
+        trades.len()
+      } else {
+        0
+      }
+    };
+
+    let balance = if let Ok(balance) = self.get_balance(core_id.clone().to_owned()) {
+      balance.total.to_string()
+    } else {
+      "No balance available.".to_string()
+    };
+    let rows: Vec<LabelValueItem<String>> = vec![
+      LabelValueItem::new("Pair".to_string(), pair.to_string()),
+      LabelValueItem::new(
+        "Duration".to_string(),
+        format!("{}", duration_to_readable(&duration)),
+      ),
+      LabelValueItem::new("Balance".to_string(), balance),
+      LabelValueItem::new("Trades".to_string(), (n_closed_positions).to_string()),
+    ];
+    Ok(rows)
+  }
+
+  pub fn get_statistics(
+    &mut self,
+    core_id: &Uuid,
+  ) -> Result<TradingSummary, DatabaseError> {
+    let keys = self.statistics.keys();
+    self.statistics.get(core_id).copied().ok_or(DatabaseError::DataMissing(format!(
+      "Statistics for {} missing on database lookup. Available keys: {:?}",
+      core_id, keys
+    )))
   }
 }
 

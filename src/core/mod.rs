@@ -1,15 +1,16 @@
 pub mod error;
 
 use crate::{
-  assets::{fetch_candles, Pair},
+  assets::Pair,
   database::Database,
-  portfolio::Portfolio,
+  exchange::binance_client::BinanceClient,
+  exchange::fetch_candles,
+  portfolio::{balance::Balance, error::PortfolioError, Portfolio},
   screens::run_config::CoreConfiguration,
   statistic::{StatisticConfig, TradingSummary},
   trading::Trader,
-  utils::binance_client::BinanceClient,
 };
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use error::CoreError;
 use prettytable::Table;
 use serde::Serialize;
@@ -31,7 +32,7 @@ pub enum Command {
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub enum CoreMessage {
-  Finished,
+  Finished(Uuid),
 }
 
 pub struct Core {
@@ -45,6 +46,7 @@ pub struct Core {
   statistics_config: StatisticConfig,
   traders: Vec<Trader>,
   n_days_history_fetch: i64,
+  is_backtest: bool,
 }
 
 impl Core {
@@ -61,21 +63,27 @@ impl Core {
       loop {
         tokio::select! {
             _ = fetching_stopped.recv() => {
-                let _ = self
-                .portfolio
-                .lock()
-                .await
-                .init_core_in_db(self.id, self.statistics_config.starting_equity)
-                .await;
                 break;
             }
         }
       }
     }
+    let starting_time = if self.is_backtest {
+      // TODO: implement proper lookup of when BACKTEST started
+      Utc::now()
+    } else {
+      Utc::now()
+    };
+
+    let _ = self
+      .init_core_in_db(self.id, self.statistics_config.starting_equity, starting_time)
+      .await;
+
     let mut trading_stopped = self.run_traders().await;
     loop {
       tokio::select! {
           _ = trading_stopped.recv() => {
+              log::info!("Trading loop finished.");
               break;
           },
           command = self.command_rx.recv() => {
@@ -101,20 +109,26 @@ impl Core {
     }
 
     // File to print out the statistics
-    if let Ok(mut out) = File::create("summary.html") {
-      let css_content = std::fs::read_to_string("summary.css")
-        .map_err(|e| CoreError::ReportError(e.to_string()))?;
-      writeln!(out, "<style>{}</style>", css_content).unwrap();
-      let (overall_stats_tables, exited_trades_table) =
-        self.generate_session_summary().await?;
-      overall_stats_tables.iter().for_each(|table| {
-        let _ = table.print_html(&mut out);
-        // let _ = table.printstd();
-      });
-      let _ = exited_trades_table.print_html(&mut out);
-      warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+    match File::create("summary.html") {
+      Ok(mut out) => {
+        let css_content = std::fs::read_to_string("summary.css")
+          .map_err(|e| CoreError::ReportError(e.to_string()))?;
+        writeln!(out, "<style>{}</style>", css_content)
+          .map_err(|e| CoreError::ReportError(e.to_string()))?;
+        let (overall_stats_tables, exited_trades_table) =
+          self.generate_session_summary().await?;
+        overall_stats_tables.iter().for_each(|table| {
+          match table.print_html(&mut out) {
+            Err(e) => log::error!("{}", e.to_string()),
+            _ => (),
+          };
+          // let _ = table.printstd();
+        });
+        let _ = exited_trades_table.print_html(&mut out);
+        warn!("\n\n\nCheck summary.html for backtesting stats\n\n");
+      },
+      Err(e) => log::error!("{}", e.to_string()),
     }
-
     Ok(())
   }
 
@@ -171,7 +185,6 @@ impl Core {
   }
   async fn terminate_traders(&self, message: String) {
     self.exit_all_positions().await;
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     for (market, command_transmitter) in self.command_transmitters.iter() {
       if command_transmitter.send(Command::Terminate(message.clone())).await.is_err() {
         error!(why = "dropped receiver", asset = &*format!("{:?}", market),);
@@ -189,11 +202,10 @@ impl Core {
       }
     }
   }
-  async fn exit_position(&self, asset: Pair) {
-    if let Some((market_ref, command_tx)) =
-      self.command_transmitters.get_key_value(&asset)
+  async fn exit_position(&self, pair: Pair) {
+    if let Some((market_ref, command_tx)) = self.command_transmitters.get_key_value(&pair)
     {
-      if command_tx.send(Command::ExitPosition(asset)).await.is_err() {
+      if command_tx.send(Command::ExitPosition(pair)).await.is_err() {
         error!(
           market = &*format!("{:?}", market_ref),
           why = "dropped receiver",
@@ -202,7 +214,7 @@ impl Core {
       }
     } else {
       warn!(
-        market = &*format!("{:?}", asset),
+        market = &*format!("{:?}", pair),
         why = "Engine has no trader_command_tx associated with provided Market",
         "failed to exit Position"
       );
@@ -210,16 +222,16 @@ impl Core {
   }
   async fn generate_session_summary(&self) -> Result<(Vec<Table>, Table), CoreError> {
     // Fetch statistics for each Market
-
     let assets: Vec<_> = self.command_transmitters.clone().into_keys().collect();
     let mut stats_per_market = Vec::new();
-    let futures: Vec<_> = assets
+    let core_id: Uuid = self.id.clone();
+    let stats: Vec<_> = assets
       .into_iter()
       .map(|asset| {
         let portfolio_clone = self.portfolio.clone();
         tokio::spawn(async move {
           let mut portfolio = portfolio_clone.lock().await;
-          match portfolio.get_statistics(&asset).await {
+          match portfolio.get_statistics(&core_id).await {
             Ok(statistics) => Some((asset, statistics)),
             Err(error) => {
               error!(
@@ -234,26 +246,28 @@ impl Core {
       })
       .collect();
 
-    for future in futures {
-      if let Some(result) = future.await.unwrap() {
+    for stat in stats {
+      let stat = stat.await.map_err(|e| CoreError::ReportError(e.to_string()))?;
+      if let Some(result) = stat {
         stats_per_market.push(result);
       }
     }
 
     let mut database = self.database.lock().await;
-    let final_balance = database.get_balance(self.id).ok();
-    let min_start_time = stats_per_market
-      .iter()
-      .map(|(_, stats)| stats)
-      .min_by(|stats1, stats2| stats1.starting_time.cmp(&stats2.starting_time))
-      .map(|stats| stats.starting_time)
-      .to_owned()
-      .unwrap();
-    warn!("TRADING SINCE: {}", min_start_time);
-    let mut statistics_summary =
-      TradingSummary::init(self.statistics_config, Some(min_start_time));
-    warn!("FINAL BALANCE: {:?}", final_balance);
 
+    let final_balance = database.get_balance(self.id).ok();
+    let min_start_time = if self.is_backtest {
+      stats_per_market
+        .iter()
+        .map(|(_, stats)| stats)
+        .min_by(|stats1, stats2| stats1.starting_time.cmp(&stats2.starting_time))
+        .map(|stats| stats.starting_time)
+        .to_owned()
+        .unwrap_or(Utc::now())
+    } else {
+      Utc::now()
+    };
+    let mut statistics_summary = database.get_statistics(&core_id)?;
     // Generate average statistics across all markets using session's exited Positions
     let exited_positions = database.get_exited_positions(self.id)?;
     statistics_summary.generate_summary(&exited_positions);
@@ -261,7 +275,7 @@ impl Core {
       crate::statistic::exited_positions_table(exited_positions);
     let stats_per_market: Vec<_> = stats_per_market
       .into_iter()
-      .map(|(asset, summary)| (asset.to_string(), summary))
+      .map(|(core_id, summary)| (core_id.to_string(), summary))
       .collect();
 
     let overall_stats_tables = crate::statistic::combine(
@@ -272,6 +286,26 @@ impl Core {
     );
 
     Ok((overall_stats_tables, exited_positions_table))
+  }
+
+  async fn init_core_in_db(
+    &self,
+    core_id: Uuid,
+    starting_cash: f64,
+    starting_time: DateTime<Utc>,
+  ) -> Result<(), CoreError> {
+    let mut db = self.database.lock().await;
+    db.set_balance(
+      core_id,
+      Balance { time: Utc::now(), total: starting_cash, available: starting_cash },
+    )?;
+    db.set_statistics(
+      core_id,
+      TradingSummary::init(self.statistics_config, Some(starting_time)),
+    )
+    .map_err(CoreError::RepositoryInteraction)?;
+    log::info!("New core initiated in DB {}", core_id);
+    Ok(())
   }
 }
 
@@ -286,6 +320,7 @@ pub struct CoreBuilder {
   traders: Option<Vec<Trader>>,
   statistics_config: Option<StatisticConfig>,
   n_days_history_fetch: Option<i64>,
+  is_backtest: Option<bool>,
 }
 
 impl CoreBuilder {
@@ -301,6 +336,7 @@ impl CoreBuilder {
       traders: None,
       statistics_config: None,
       n_days_history_fetch: None,
+      is_backtest: None,
     }
   }
   pub fn id(self, id: Uuid) -> Self {
@@ -333,6 +369,9 @@ impl CoreBuilder {
   pub fn n_days_history_fetch(self, value: i64) -> Self {
     CoreBuilder { n_days_history_fetch: Some(value), ..self }
   }
+  pub fn is_backtest(self, value: bool) -> Self {
+    CoreBuilder { is_backtest: Some(value), ..self }
+  }
   pub fn build(self) -> Result<Core, CoreError> {
     let binance_client =
       self.binance_client.ok_or(CoreError::BuilderIncomplete("binance client"))?;
@@ -358,6 +397,7 @@ impl CoreBuilder {
       n_days_history_fetch: self
         .n_days_history_fetch
         .ok_or(CoreError::BuilderIncomplete("n_days_history_fetch"))?,
+      is_backtest: self.is_backtest.ok_or(CoreError::BuilderIncomplete("is_backtest"))?,
     };
     Ok(core)
   }

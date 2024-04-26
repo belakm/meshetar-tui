@@ -7,18 +7,20 @@ pub mod error;
 use self::{asset_ticker::KlineEvent, error::AssetError};
 use crate::{
   database::Database,
-  strategy::Signal,
-  utils::{
-    binance_client::BinanceClient,
-    formatting::{dt_to_readable, timestamp_to_dt},
+  exchange::{
+    binance_client::{self, BinanceClient},
+    error::ExchangeError,
+    BinanceKline,
   },
+  strategy::Signal,
+  utils::formatting::{dt_to_readable, timestamp_to_dt},
 };
 use binance_spot_connector_rust::market::klines::KlineInterval;
 use chrono::{DateTime, Duration, Utc};
 use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use std::sync::Arc;
+use std::{sync::Arc, thread::sleep};
 use strum::{Display, EnumString};
 use tokio::sync::{mpsc, Mutex};
 use tracing::info;
@@ -46,6 +48,7 @@ pub enum Pair {
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub enum Feed {
   Next(MarketEvent),
+  Empty,
   Unhealthy,
   Finished,
 }
@@ -53,7 +56,7 @@ pub enum Feed {
 #[derive(Clone, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct MarketEvent {
   pub time: DateTime<Utc>,
-  pub asset: Pair,
+  pub pair: Pair,
   pub detail: MarketEventDetail,
 }
 
@@ -150,75 +153,99 @@ pub enum Side {
   Buy,
   Sell,
 }
+impl Side {
+  pub fn to_binance_side(&self) -> binance_spot_connector_rust::trade::order::Side {
+    match self {
+      Side::Buy => binance_spot_connector_rust::trade::order::Side::Buy,
+      Side::Sell => binance_spot_connector_rust::trade::order::Side::Sell,
+    }
+  }
+}
 
 pub struct MarketFeed {
   pub market_receiver: Option<mpsc::UnboundedReceiver<MarketEvent>>,
   is_live: bool,
-  asset: Pair,
   database: Arc<Mutex<Database>>,
   last_n_candles: usize,
+  pair: Pair,
+  model_name: String,
+  stream_url: String,
 }
 impl MarketFeed {
   pub fn next(&mut self) -> Feed {
     if self.market_receiver.is_none() {
       return Feed::Unhealthy;
     }
-    loop {
-      match self.market_receiver.as_mut().unwrap().try_recv() {
-        Ok(event) => break Feed::Next(event),
-        Err(mpsc::error::TryRecvError::Empty) => continue,
-        Err(mpsc::error::TryRecvError::Disconnected) => break Feed::Finished,
-      }
+    match self.market_receiver.as_mut().unwrap().try_recv() {
+      Ok(event) => Feed::Next(event),
+      Err(mpsc::error::TryRecvError::Empty) => Feed::Empty,
+      Err(mpsc::error::TryRecvError::Disconnected) => Feed::Finished,
     }
   }
-  pub async fn run(&mut self) -> Result<(), AssetError> {
-    info!("Datafeed init.");
-    self.market_receiver = if self.is_live {
-      Some(self.new_live_feed(self.asset.clone()).await?)
-    } else {
-      Some(
-        self
-          .new_backtest(
-            self.asset.clone(),
-            self.database.clone(),
-            self.last_n_candles,
-            50,
-          )
-          .await?,
-      )
-    };
-    info!(
-      "Datafeed init complete. Market receiver is ok: {}",
-      self.market_receiver.is_some()
-    );
-    Ok(())
-  }
+  // pub async fn run(&mut self) -> Result<(), AssetError> {
+  //   self.market_receiver = if self.is_live {
+  //     Some(self.new_live_feed(self.pair.clone()).await?)
+  //   } else {
+  //     Some(
+  //       self
+  //         .new_backtest(
+  //           self.database.clone(),
+  //           self.last_n_candles,
+  //           50,
+  //           self.pair.clone(),
+  //           self.model_name.clone(),
+  //         )
+  //         .await?,
+  //     )
+  //   };
+  //   info!(
+  //     "Datafeed init complete. Market receiver is ok: {}",
+  //     self.market_receiver.is_some()
+  //   );
+  //   Ok(())
+  // }
   async fn new_live_feed(
     &self,
-    asset: Pair,
-  ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
-    let ticker = asset_ticker::new_ticker(asset).await?;
+    pairs: Vec<Pair>,
+  ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, ExchangeError> {
+    let ticker = asset_ticker::new_ticker(pairs, &self.stream_url).await?;
     Ok(ticker)
   }
   async fn new_backtest(
     &self,
-    asset: Pair,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
     buffer_n_of_candles: usize,
+    pair: Pair,
+    model_name: String,
   ) -> Result<mpsc::UnboundedReceiver<MarketEvent>, AssetError> {
-    let ticker =
-      backtest_ticker::new_ticker(asset, database, last_n_candles, buffer_n_of_candles)
-        .await?;
+    let ticker = backtest_ticker::new_ticker(
+      database,
+      last_n_candles,
+      buffer_n_of_candles,
+      pair,
+      model_name,
+    )
+    .await?;
     Ok(ticker)
   }
   pub fn new(
-    asset: Pair,
     is_live: bool,
     database: Arc<Mutex<Database>>,
     last_n_candles: usize,
+    pair: Pair,
+    model_name: String,
+    stream_url: String,
   ) -> Self {
-    MarketFeed { market_receiver: None, asset, is_live, database, last_n_candles }
+    MarketFeed {
+      market_receiver: None,
+      is_live,
+      database,
+      last_n_candles,
+      pair,
+      model_name,
+      stream_url,
+    }
   }
 }
 
@@ -232,58 +259,4 @@ impl Default for MarketMeta {
   fn default() -> Self {
     Self { close: 100.0, time: Utc::now() }
   }
-}
-
-pub async fn fetch_candles(
-  duration: Duration,
-  asset: Pair,
-  binance_client: Arc<BinanceClient>,
-) -> Result<Vec<Candle>, AssetError> {
-  let mut start_time: i64 = (Utc::now() - duration).timestamp_millis();
-  let mut candles = Vec::<Candle>::new();
-  loop {
-    tokio::select! {
-        _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {
-            info!("Loading candles from: {:?}", timestamp_to_dt(start_time));
-            let request = binance_spot_connector_rust::market::klines(&asset.to_string(), KlineInterval::Minutes1)
-                .start_time(start_time as u64)
-                .limit(1000);
-            let klines;
-            {
-                let data = binance_client.client
-                    .send(request)
-                    .map_err(|e| AssetError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
-                klines = data
-                    .into_body_str()
-                    .map_err(|e| AssetError::BinanceClientError(format!("{:?}", e)))
-                    .await?;
-            };
-
-            let new_candles = parse_binance_klines(&klines).await?;
-            let last_candle = &new_candles.last();
-            if let Some(last_candle) = last_candle {
-                start_time = last_candle.close_time.timestamp_millis();
-                candles.extend(new_candles);// .concat(new_candles);
-            } else {
-                break
-            }
-        }
-    }
-  }
-  info!("Candles fetched: {}", candles.len());
-  Ok(candles)
-}
-
-pub type BinanceKline =
-  (i64, String, String, String, String, String, i64, String, i64, String, String, String);
-
-async fn parse_binance_klines(klines: &String) -> Result<Vec<Candle>, AssetError> {
-  let data: Vec<BinanceKline> = serde_json::from_str(klines)?;
-  let mut new_candles: Vec<Candle> = Vec::new();
-  for candle in data {
-    let new_candle = Candle::from(&candle);
-    new_candles.push(Candle::from(new_candle));
-  }
-  Ok(new_candles)
 }

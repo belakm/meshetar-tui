@@ -5,12 +5,21 @@ use serde::{
   de::{self, Deserializer, Visitor},
   Deserialize, Serialize,
 };
+use uuid::Uuid;
 
 use crate::{
   assets::Pair,
+  components::list::LabelValueItem,
   core::{Command, CoreMessage},
   screens::ScreenId,
+  statistic::TradingSummary,
 };
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum ScreenUpdate {
+  Report(TradingSummary),
+  Running(Vec<LabelValueItem<String>>),
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Action {
@@ -30,6 +39,9 @@ pub enum Action {
   CoreCommand(Command),
   CoreMessage(CoreMessage),
   GenerateModel(Pair),
+  GenerateReport(Uuid),
+  GenerateRunOverview(Uuid, Pair),
+  ScreenUpdate(ScreenUpdate),
 }
 
 impl<'de> Deserialize<'de> for Action {

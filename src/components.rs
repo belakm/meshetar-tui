@@ -1,10 +1,10 @@
 pub mod form;
+pub mod header;
 pub mod list;
 pub mod report;
-pub mod select;
 pub mod style;
 
-use color_eyre::eyre::Result;
+use eyre::Result;
 use ratatui::prelude::*;
 
 pub trait ListDisplay {

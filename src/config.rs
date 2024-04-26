@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fmt, path::PathBuf};
 
-use color_eyre::eyre::Result;
 use config::Value;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
+use eyre::Result;
 use ratatui::style::{Color, Modifier, Style};
 use serde::{
   de::{self, Deserializer, MapAccess, Visitor},
@@ -51,7 +51,9 @@ impl Config {
     ];
     let mut found_config = false;
     for (file, format) in &config_files {
-      builder = builder.add_source(config::File::from(config_dir.join(file)).format(*format).required(false));
+      builder = builder.add_source(
+        config::File::from(config_dir.join(file)).format(*format).required(false),
+      );
       if config_dir.join(file).exists() {
         found_config = true
       }
@@ -92,8 +94,10 @@ impl<'de> Deserialize<'de> for KeyBindings {
     let keybindings = parsed_map
       .into_iter()
       .map(|(mode, inner_map)| {
-        let converted_inner_map =
-          inner_map.into_iter().map(|(key_str, cmd)| (parse_key_sequence(&key_str).unwrap(), cmd)).collect();
+        let converted_inner_map = inner_map
+          .into_iter()
+          .map(|(key_str, cmd)| (parse_key_sequence(&key_str).unwrap(), cmd))
+          .collect();
         (mode, converted_inner_map)
       })
       .collect();
@@ -133,7 +137,10 @@ fn extract_modifiers(raw: &str) -> (&str, KeyModifiers) {
   (current, modifiers)
 }
 
-fn parse_key_code_with_modifiers(raw: &str, mut modifiers: KeyModifiers) -> Result<KeyEvent, String> {
+fn parse_key_code_with_modifiers(
+  raw: &str,
+  mut modifiers: KeyModifiers,
+) -> Result<KeyEvent, String> {
   let c = match raw {
     "esc" => KeyCode::Esc,
     "enter" => KeyCode::Enter,
@@ -244,7 +251,9 @@ pub fn key_event_to_string(key_event: &KeyEvent) -> String {
 }
 
 pub fn parse_key_sequence(raw: &str) -> Result<Vec<KeyEvent>, String> {
-  if raw.chars().filter(|c| *c == '>').count() != raw.chars().filter(|c| *c == '<').count() {
+  if raw.chars().filter(|c| *c == '>').count()
+    != raw.chars().filter(|c| *c == '<').count()
+  {
     return Err(format!("Unable to parse `{}`", raw));
   }
   let raw = if !raw.contains("><") {
@@ -283,7 +292,8 @@ impl<'de> Deserialize<'de> for Styles {
     let styles = parsed_map
       .into_iter()
       .map(|(mode, inner_map)| {
-        let converted_inner_map = inner_map.into_iter().map(|(str, style)| (str, parse_style(&style))).collect();
+        let converted_inner_map =
+          inner_map.into_iter().map(|(str, style)| (str, parse_style(&style))).collect();
         (mode, converted_inner_map)
       })
       .collect();
@@ -293,7 +303,8 @@ impl<'de> Deserialize<'de> for Styles {
 }
 
 pub fn parse_style(line: &str) -> Style {
-  let (foreground, background) = line.split_at(line.to_lowercase().find("on ").unwrap_or(line.len()));
+  let (foreground, background) =
+    line.split_at(line.to_lowercase().find("on ").unwrap_or(line.len()));
   let foreground = process_color_string(foreground);
   let background = process_color_string(&background.replace("on ", ""));
 
@@ -443,7 +454,11 @@ mod tests {
   fn test_config() -> Result<()> {
     let c = Config::new()?;
     assert_eq!(
-      c.keybindings.get(&Mode::Home).unwrap().get(&parse_key_sequence("<q>").unwrap_or_default()).unwrap(),
+      c.keybindings
+        .get(&Mode::Home)
+        .unwrap()
+        .get(&parse_key_sequence("<q>").unwrap_or_default())
+        .unwrap(),
       &Action::Quit
     );
     Ok(())
@@ -451,20 +466,38 @@ mod tests {
 
   #[test]
   fn test_simple_keys() {
-    assert_eq!(parse_key_event("a").unwrap(), KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty()));
+    assert_eq!(
+      parse_key_event("a").unwrap(),
+      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())
+    );
 
-    assert_eq!(parse_key_event("enter").unwrap(), KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+    assert_eq!(
+      parse_key_event("enter").unwrap(),
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::empty())
+    );
 
-    assert_eq!(parse_key_event("esc").unwrap(), KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()));
+    assert_eq!(
+      parse_key_event("esc").unwrap(),
+      KeyEvent::new(KeyCode::Esc, KeyModifiers::empty())
+    );
   }
 
   #[test]
   fn test_with_modifiers() {
-    assert_eq!(parse_key_event("ctrl-a").unwrap(), KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    assert_eq!(
+      parse_key_event("ctrl-a").unwrap(),
+      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
+    );
 
-    assert_eq!(parse_key_event("alt-enter").unwrap(), KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+    assert_eq!(
+      parse_key_event("alt-enter").unwrap(),
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
+    );
 
-    assert_eq!(parse_key_event("shift-esc").unwrap(), KeyEvent::new(KeyCode::Esc, KeyModifiers::SHIFT));
+    assert_eq!(
+      parse_key_event("shift-esc").unwrap(),
+      KeyEvent::new(KeyCode::Esc, KeyModifiers::SHIFT)
+    );
   }
 
   #[test]
@@ -483,7 +516,10 @@ mod tests {
   #[test]
   fn test_reverse_multiple_modifiers() {
     assert_eq!(
-      key_event_to_string(&KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL | KeyModifiers::ALT)),
+      key_event_to_string(&KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT
+      )),
       "ctrl-alt-a".to_string()
     );
   }
@@ -496,8 +532,14 @@ mod tests {
 
   #[test]
   fn test_case_insensitivity() {
-    assert_eq!(parse_key_event("CTRL-a").unwrap(), KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL));
+    assert_eq!(
+      parse_key_event("CTRL-a").unwrap(),
+      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)
+    );
 
-    assert_eq!(parse_key_event("AlT-eNtEr").unwrap(), KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+    assert_eq!(
+      parse_key_event("AlT-eNtEr").unwrap(),
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT)
+    );
   }
 }

@@ -1,23 +1,24 @@
 pub mod error;
 pub mod execution;
 
+use self::{error::TraderError, execution::Execution};
 use crate::{
   assets::{Feed, MarketEventDetail, MarketFeed, Pair},
   core::Command,
-  events::MessageTransmitter,
-  events::{Event, EventTx},
+  events::{Event, EventTx, MessageTransmitter},
   portfolio::Portfolio,
   strategy::Strategy,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 use strum::{Display, EnumString};
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+  sync::{broadcast, mpsc, Mutex},
+  time::sleep,
+};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-
-use self::{error::TraderError, execution::Execution};
 
 #[derive(Clone, Eq, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub struct SignalForceExit {
@@ -36,9 +37,9 @@ pub struct Trader {
   pub pair: Pair,
   command_reciever: mpsc::Receiver<Command>,
   event_transmitter: EventTx,
+  event_rx: broadcast::Receiver<Event>,
   event_queue: VecDeque<Event>,
   portfolio: Arc<Mutex<Portfolio>>,
-  market_feed: MarketFeed,
   strategy: Strategy,
   execution: Execution,
   trading_is_live: bool,
@@ -49,14 +50,12 @@ impl Trader {
     TraderBuilder::new()
   }
   pub async fn run(&mut self) -> Result<(), TraderError> {
-    info!("Trader {} starting up.", self.pair);
-    let _ = self.market_feed.run().await?;
-    let _ = tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-    let mut backtest_stats_initialized = false;
-    loop {
+    let _ = tokio::time::sleep(Duration::from_micros(200)).await;
+
+    'trader_loop: loop {
       while let Some(command) = self.receive_remote_command() {
         match command {
-          Command::Terminate(_) => break,
+          Command::Terminate(_) => break 'trader_loop,
           Command::ExitPosition(asset) => {
             self
               .event_queue
@@ -65,35 +64,39 @@ impl Trader {
           _ => continue,
         }
       }
-      match self.market_feed.next() {
-        Feed::Next(market_event) => {
-          self.event_transmitter.send(Event::Market(market_event.clone()));
-          self.event_queue.push_back(Event::Market(market_event));
+      match self.event_rx.try_recv() {
+        Ok(event) => {
+          self.event_queue.push_back(event);
         },
-        Feed::Unhealthy => {
-          warn!(
-              core_id = %self.core_id,
-              pair = ?self.pair,
-              action = "continuing while waiting for healthy Feed",
-              "MarketFeed unhealthy"
-          );
-          continue;
-        },
-        Feed::Finished => {
-          let positions = self.portfolio.lock().await.open_positions(self.core_id).await;
-          match positions {
-            Ok(positions) => {
-              if positions.len() > 0 {
-                let last_update = positions.last().unwrap().meta.update_time;
-                self.event_queue.push_back(Event::SignalForceExit(
-                  SignalForceExit::from(self.pair.clone(), Some(last_update)),
-                ));
-              } else {
-                break;
-              }
+        Err(e) => {
+          let err_msg = format!("Error on trader event feed: {:?}", e);
+          match e {
+            broadcast::error::TryRecvError::Empty => {
+              continue;
             },
-            Err(e) => {
-              error!("{:?}", e)
+            broadcast::error::TryRecvError::Lagged(num_skipped) => {
+              log::warn!("Trader skipped {} messages (lag).", num_skipped);
+              continue;
+            },
+            broadcast::error::TryRecvError::Closed => {
+              log::warn!("{}", err_msg);
+              let positions =
+                self.portfolio.lock().await.open_positions(self.core_id).await;
+              match positions {
+                Ok(positions) => {
+                  if positions.len() > 0 {
+                    let last_update = positions.last().unwrap().meta.update_time;
+                    self.event_queue.push_back(Event::SignalForceExit(
+                      SignalForceExit::from(self.pair.clone(), Some(last_update)),
+                    ));
+                  } else {
+                    break;
+                  }
+                },
+                Err(e) => {
+                  error!("{:?}", e)
+                },
+              }
             },
           }
         },
@@ -101,28 +104,18 @@ impl Trader {
       while let Some(event) = self.event_queue.pop_front() {
         match event {
           Event::Market(market_event) => {
-            if let MarketEventDetail::BacktestCandle((candle, _)) = &market_event.detail {
-              if !backtest_stats_initialized {
-                let start_time = candle.open_time;
-                let _ = self
-                  .portfolio
-                  .lock()
-                  .await
-                  .reset_statistics_with_time(self.pair, start_time)
-                  .await;
+            if market_event.pair == self.pair {
+              match self.strategy.generate_signal(&market_event).await {
+                Ok(Some(signal)) => {
+                  self.event_transmitter.send(Event::Signal(signal.clone()));
+                  self.event_queue.push_back(Event::Signal(signal));
+                },
+                Ok(None) => { /* No signal = do nothing*/ },
+                Err(e) => {
+                  error!("Exiting on strategy error. {}", e);
+                  return Err(TraderError::from(e));
+                },
               }
-              backtest_stats_initialized = true;
-            }
-            match self.strategy.generate_signal(&market_event).await {
-              Ok(Some(signal)) => {
-                self.event_transmitter.send(Event::Signal(signal.clone()));
-                self.event_queue.push_back(Event::Signal(signal));
-              },
-              Ok(None) => { /* No signal = do nothing*/ },
-              Err(e) => {
-                error!("Exiting on strategy error. {}", e);
-                return Err(TraderError::from(e));
-              },
             }
             if let Some(position_update) = self
               .portfolio
@@ -169,9 +162,15 @@ impl Trader {
             }
           },
           Event::Order(order) => {
-            let fill = self.execution.generate_fill(&order, self.trading_is_live)?;
-            self.event_transmitter.send(Event::Fill(fill.clone()));
-            self.event_queue.push_back(Event::Fill(fill));
+            match self.execution.generate_fill(&order, self.trading_is_live).await {
+              Ok(fill) => {
+                self.event_transmitter.send(Event::Fill(fill.clone()));
+                self.event_queue.push_back(Event::Fill(fill));
+              },
+              Err(e) => {
+                log::error!("{:?}", e);
+              },
+            }
           },
           Event::Fill(fill) => {
             let fill_side_effect_events =
@@ -223,6 +222,7 @@ pub struct TraderBuilder {
   market_feed: Option<MarketFeed>,
   command_reciever: Option<mpsc::Receiver<Command>>,
   event_transmitter: Option<EventTx>,
+  event_rx: Option<broadcast::Receiver<Event>>,
   event_queue: Option<VecDeque<Event>>,
   portfolio: Option<Arc<Mutex<Portfolio>>>,
   strategy: Option<Strategy>,
@@ -237,6 +237,7 @@ impl TraderBuilder {
       pair: None,
       trading_is_live: None,
       event_transmitter: None,
+      event_rx: None,
       portfolio: None,
       market_feed: None,
       event_queue: None,
@@ -280,6 +281,10 @@ impl TraderBuilder {
     Self { trading_is_live: Some(value), ..self }
   }
 
+  pub fn event_rx(self, value: broadcast::Receiver<Event>) -> Self {
+    Self { event_rx: Some(value), ..self }
+  }
+
   pub fn build(self) -> Result<Trader, TraderError> {
     Ok(Trader {
       core_id: self.core_id.ok_or(TraderError::BuilderIncomplete("engine_id"))?,
@@ -290,9 +295,9 @@ impl TraderBuilder {
       event_transmitter: self
         .event_transmitter
         .ok_or(TraderError::BuilderIncomplete("event_tx"))?,
-      event_queue: VecDeque::with_capacity(2),
+      event_rx: self.event_rx.ok_or(TraderError::BuilderIncomplete("event_rx"))?,
+      event_queue: VecDeque::with_capacity(20),
       portfolio: self.portfolio.ok_or(TraderError::BuilderIncomplete("portfolio"))?,
-      market_feed: self.market_feed.ok_or(TraderError::BuilderIncomplete("data"))?,
       strategy: self.strategy.ok_or(TraderError::BuilderIncomplete("strategy"))?,
       execution: self.execution.ok_or(TraderError::BuilderIncomplete("execution"))?,
       trading_is_live: self

@@ -1,3 +1,7 @@
+import os
+# THIS MUTES TENSORFLOW 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 #%%
 import tensorflow as tf
 import sqlite3
@@ -6,18 +10,26 @@ from ta import add_all_ta_features
 import warnings
 import pickle
 from sklearn.preprocessing import RobustScaler
-import os
+import sys
 
-# while not os.path.basename(os.getcwd()) == 'meshetar':
-#    os.chdir('..')  # Move up one directory
+def suppress_output():
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
 
 def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
+    from random import choices
+    return choices(["hold", "buy", "sell"], [0.6, 0.2, 0.2])[0]
+
+def run2(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     # Comment out the warning silencers below when developing:
     warnings.simplefilter(action='ignore', category=FutureWarning)
     warnings.simplefilter("ignore", category=RuntimeWarning)
     warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
+    suppress_output()
+
     # Load the saved model
-    loaded_model = tf.keras.models.load_model("./models/generated/" + model_name)  # Specify the path to your saved model directory or .h5 file
+    model_path = "./models/generated/" + model_name;
+    loaded_model = tf.keras.models.load_model(model_path)  # Specify the path to your saved model directory or .h5 file
     
     conn = sqlite3.connect('./database.sqlite')
     # cursor = sqliteConnection.cursor()
@@ -59,8 +71,8 @@ def run(candle_time=None, pair="BTCUSDT", model_name="neural_net_model"):
     scaler = RobustScaler()
     klines_to_predict = scaler.fit_transform(klines_to_predict.astype('float32'))
     predictions = loaded_model.predict(klines_to_predict)
-    file_path = './models/cutoffs.pickle'
-    with open(file_path, 'rb') as handle:
+    pickle_path = model_path + '/cutoffs.pickle'
+    with open(pickle_path, 'rb') as handle:
         cutoffs = pickle.load(handle)
 
     cut_predictions = pd.DataFrame()

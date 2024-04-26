@@ -1,14 +1,12 @@
-use std::path::PathBuf;
-
-use color_eyre::eyre::Result;
 use directories::ProjectDirs;
+use eyre::Result;
 use lazy_static::lazy_static;
+use std::path::PathBuf;
 use tracing::error;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{
   self, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, Layer,
 };
-pub mod binance_client;
 pub mod formatting;
 pub mod load_config;
 pub mod serde_utils;
@@ -31,16 +29,16 @@ fn project_directory() -> Option<ProjectDirs> {
 }
 
 pub fn initialize_panic_handler() -> Result<()> {
-  let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
-    .panic_section(format!(
-      "This is a bug. Consider reporting it at {}",
-      env!("CARGO_PKG_REPOSITORY")
-    ))
-    .capture_span_trace_by_default(false)
-    .display_location_section(false)
-    .display_env_section(false)
-    .into_hooks();
-  eyre_hook.install()?;
+  // let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default()
+  //   .panic_section(format!(
+  //     "This is a bug. Consider reporting it at {}",
+  //     env!("CARGO_PKG_REPOSITORY")
+  //   ))
+  //   .capture_span_trace_by_default(false)
+  //   .display_location_section(false)
+  //   .display_env_section(false)
+  //   .into_hooks();
+  // eyre_hook.install()?;
   std::panic::set_hook(Box::new(move |panic_info| {
     if let Ok(mut t) = crate::tui::Tui::new() {
       if let Err(r) = t.exit() {
@@ -64,8 +62,9 @@ pub fn initialize_panic_handler() -> Result<()> {
         .expect("human-panic: printing error message to console failed");
       eprintln!("{}", panic_hook.panic_report(panic_info)); // prints color-eyre stack trace to stderr
     }
-    let msg = format!("{}", panic_hook.panic_report(panic_info));
-    log::error!("Error: {}", strip_ansi_escapes::strip_str(msg));
+    //let msg = format!("{}", panic_hook.panic_report(panic_info));
+    //log::error!("Error: {}", strip_ansi_escapes::strip_str(msg));
+    log::error!("Error: {}", panic_info);
 
     #[cfg(debug_assertions)]
     {
@@ -156,7 +155,7 @@ pub fn version() -> String {
   let author = clap::crate_authors!();
 
   let commit_hash = GIT_COMMIT_HASH;
-
+  //
   // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
   let config_dir_path = get_config_dir().display().to_string();
   let data_dir_path = get_data_dir().display().to_string();
